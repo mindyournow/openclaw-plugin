@@ -1,0 +1,30 @@
+{
+  "id": "myn",
+  "name": "Mind Your Now",
+  "version": "0.1.0",
+  "description": "AI-powered task and life management for OpenClaw agents",
+  "author": "Mind Your Now <team@mindyournow.com>",
+  "license": "MIT",
+  "entry": "index.ts",
+  "skills": ["skills/myn"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "MYN API key with AGENT_FULL scope",
+        "x-secret": true
+      },
+      "baseUrl": {
+        "type": "string",
+        "description": "MYN API base URL",
+        "default": "https://api.mindyournow.com"
+      }
+    },
+    "required": ["apiKey"]
+  },
+  "uiHints": {
+    "icon": "🎯",
+    "color": "#6366F1"
+  }
+}

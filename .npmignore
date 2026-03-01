@@ -1,0 +1,43 @@
+# Source files (only distribute compiled JS)
+src/
+tests/
+index.ts
+vitest.config.ts
+tsconfig.json
+
+# Development
+.git/
+.github/
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build info
+*.tsbuildinfo
+
+# CI
+.travis.yml
+.gitlab-ci.yml
