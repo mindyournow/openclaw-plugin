@@ -12,6 +12,7 @@
     }
   },
   "scripts": {
+    "prebuild": "node scripts/sync-skills.js",
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
@@ -49,6 +50,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "@mindyournow/skills": "^0.1.0",
     "@sinclair/typebox": "^0.34.0"
   },
   "peerDependencies": {
