@@ -1,4 +1,4 @@
-# @mindyournow/openclaw-plugin
+# @mind-your-now/openclaw-plugin
 
 [![npm version](https://badge.fury.io/js/@mindyournow%2Fopenclaw-plugin.svg)](https://badge.fury.io/js/@mindyournow%2Fopenclaw-plugin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -22,10 +22,10 @@ This plugin integrates [Mind Your Now](https://mindyournow.com) (MYN) with [Open
 
 ```bash
 # Install via OpenClaw
-openclaw plugins install @mindyournow/openclaw-plugin
+openclaw plugins install @mind-your-now/openclaw-plugin
 
 # Or via npm
-npm install @mindyournow/openclaw-plugin
+npm install @mind-your-now/openclaw-plugin
 ```
 
 ## Configuration
@@ -270,7 +270,7 @@ npm run typecheck
 The shared API client used by all tools:
 
 ```typescript
-import { MynApiClient } from '@mindyournow/openclaw-plugin';
+import { MynApiClient } from '@mind-your-now/openclaw-plugin';
 
 const client = new MynApiClient(
   'https://api.mindyournow.com',

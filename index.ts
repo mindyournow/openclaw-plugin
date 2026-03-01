@@ -1,6 +1,6 @@
 /**
  * Mind Your Now - OpenClaw Plugin
- * @mindyournow/openclaw-plugin
+ * @mind-your-now/openclaw-plugin
  *
  * Main entry point that registers all 12 MYN tools with the OpenClaw agent.
  */

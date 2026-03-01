@@ -1,6 +1,6 @@
 # Mind Your Now — OpenClaw Tool Reference
 
-This skill maps MYN API operations to OpenClaw tool names. For full MYN philosophy, priority system, and API details, see the base skill from `@mindyournow/skills`.
+This skill maps MYN API operations to OpenClaw tool names. For full MYN philosophy, priority system, and API details, see the base skill from `@mind-your-now/skills`.
 
 ## Tool Mapping
 
@@ -51,4 +51,4 @@ Every `myn_tasks create` call needs: `id` (UUID), `title`, `taskType`, `priority
 
 ## Base Skills
 
-Detailed API documentation lives in `references/` (synced from `@mindyournow/skills` at build time). See those files for endpoint parameters, request/response shapes, and curl examples.
+Detailed API documentation lives in `references/` (synced from `@mind-your-now/skills` at build time). See those files for endpoint parameters, request/response shapes, and curl examples.

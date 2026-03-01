@@ -1,5 +1,5 @@
 {
-  "name": "@mindyournow/openclaw-plugin",
+  "name": "@mind-your-now/openclaw-plugin",
   "version": "0.1.0",
   "description": "OpenClaw plugin for Mind Your Now - AI-powered task and life management",
   "type": "module",
@@ -50,7 +50,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@mindyournow/skills": "^0.1.0",
+    "@mind-your-now/skills": "^0.1.0",
     "@sinclair/typebox": "^0.34.0"
   },
   "peerDependencies": {

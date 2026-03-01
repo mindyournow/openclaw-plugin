@@ -36,5 +36,5 @@ tmp/
 temp/
 *.tmp
 
-# Synced from @mindyournow/skills (generated at build time)
+# Synced from @mind-your-now/skills (generated at build time)
 skills/myn/references/
