@@ -5,7 +5,7 @@
   "description": "AI-powered task and life management for OpenClaw agents",
   "author": "Mind Your Now <team@mindyournow.com>",
   "license": "MIT",
-  "entry": "index.ts",
+  "entry": "dist/index.js",
   "skills": ["skills/myn"],
   "configSchema": {
     "type": "object",

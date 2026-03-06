@@ -61,27 +61,29 @@ export async function executeSearch(
 }
 
 async function performSearch(client: MynApiClient, input: SearchInput) {
-  const body: Record<string, unknown> = {
-    query: input.query
-  };
+  const params = new URLSearchParams();
+  params.append('query', input.query);
 
   if (input.types && input.types.length > 0) {
-    body.types = input.types;
+    for (const t of input.types) {
+      params.append('types', t);
+    }
   }
 
   if (input.filters) {
-    body.filters = {};
-    if (input.filters.status) (body.filters as Record<string, unknown>).status = input.filters.status;
-    if (input.filters.priority) (body.filters as Record<string, unknown>).priority = input.filters.priority;
-    if (input.filters.projectId) (body.filters as Record<string, unknown>).projectId = input.filters.projectId;
-    if (input.filters.dateFrom) (body.filters as Record<string, unknown>).dateFrom = input.filters.dateFrom;
-    if (input.filters.dateTo) (body.filters as Record<string, unknown>).dateTo = input.filters.dateTo;
+    if (input.filters.status) params.append('status', input.filters.status);
+    if (input.filters.priority) params.append('priority', input.filters.priority);
+    if (input.filters.projectId) params.append('projectId', input.filters.projectId);
+    if (input.filters.dateFrom) params.append('dateFrom', input.filters.dateFrom);
+    if (input.filters.dateTo) params.append('dateTo', input.filters.dateTo);
   }
 
-  if (input.limit) body.limit = input.limit;
-  if (input.offset) body.offset = input.offset;
+  if (input.limit) params.append('limit', String(input.limit));
+  if (input.offset) params.append('offset', String(input.offset));
 
-  const data = await client.post<{
+  const queryString = params.toString() ? `?${params.toString()}` : '';
+
+  const data = await client.get<{
     results: Array<{
       id: string;
       type: string;
@@ -99,7 +101,7 @@ async function performSearch(client: MynApiClient, input: SearchInput) {
     offset: number;
     query: string;
     suggestions?: string[];
-  }>('/api/v2/search', body);
+  }>(`/api/v2/search${queryString}`);
 
   return jsonResult(data);
 }

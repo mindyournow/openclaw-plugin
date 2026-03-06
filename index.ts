@@ -41,11 +41,17 @@ export interface OpenClawPluginApi {
 /**
  * Normalize JSON Schema for cross-provider compatibility.
  *
- * TypeBox generates `anyOf: [{const: "x", type: "string"}, ...]` for unions
- * of literals. Many LLM providers (Moonshot/Kimi, Google, etc.) only support
- * the simpler `enum: ["x", ...]` format. This recursively converts.
+ * 1. JSON round-trip to strip TypeBox Symbol keys (Symbol(TypeBox.Kind))
+ * 2. Convert anyOf/const unions → enum (Moonshot/Kimi, Google require this)
+ * 3. Strip non-standard fields (format, patternProperties, minLength, maxLength)
  */
 function normalizeSchema(schema: unknown): unknown {
+  // JSON round-trip strips TypeBox Symbol keys and non-serializable metadata
+  const clean = JSON.parse(JSON.stringify(schema));
+  return deepNormalize(clean);
+}
+
+function deepNormalize(schema: unknown): unknown {
   if (schema === null || typeof schema !== 'object') return schema;
   const s = schema as Record<string, unknown>;
 
@@ -57,21 +63,21 @@ function normalizeSchema(schema: unknown): unknown {
     if (allConst) {
       const enumValues = s.anyOf.map((item: unknown) => (item as Record<string, unknown>).const);
       const { anyOf: _, ...rest } = s;
-      return { ...rest, type: 'string', enum: enumValues };
+      return deepNormalize({ ...rest, type: 'string', enum: enumValues });
     }
   }
 
-  // Recurse into properties
+  // Keys that break cross-provider compatibility
+  const skipKeys = new Set(['$schema', 'format', 'patternProperties', 'minLength', 'maxLength']);
+
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(s)) {
-    if (key === 'properties' && value !== null && typeof value === 'object') {
-      const props: Record<string, unknown> = {};
-      for (const [pKey, pValue] of Object.entries(value as Record<string, unknown>)) {
-        props[pKey] = normalizeSchema(pValue);
-      }
-      result[key] = props;
-    } else if (Array.isArray(value)) {
-      result[key] = value.map((item: unknown) => normalizeSchema(item));
+    if (skipKeys.has(key)) continue;
+
+    if (Array.isArray(value)) {
+      result[key] = value.map((item: unknown) => deepNormalize(item));
+    } else if (value !== null && typeof value === 'object') {
+      result[key] = deepNormalize(value);
     } else {
       result[key] = value;
     }
@@ -120,17 +126,24 @@ export default {
     // Create shared API client
     const client = new MynApiClient(baseUrl, apiKey);
 
-    // Wrap registerTool to normalize for cross-provider compatibility:
-    // 1. Convert TypeBox anyOf/const → enum in schemas
-    // 2. Sanitize tool name to be API-safe (some providers reject spaces/uppercase)
+    // Wrap registerTool to adapt our internal tool format to OpenClaw's plugin SDK:
+    // - 'parameters' (not 'inputSchema') for the schema
+    // - execute(_id, params) signature (not execute(input))
+    // - Return { content: [{ type: "text", text }] } format
+    // - Normalize TypeBox schemas for cross-provider compatibility
     const wrappedApi: OpenClawPluginApi = {
       ...api,
       registerTool(tool: ToolDefinition) {
+        const origExecute = tool.execute;
         api.registerTool({
-          ...tool,
-          name: tool.id, // Use id as name — guaranteed API-safe (letters, numbers, underscores)
-          inputSchema: normalizeSchema(tool.inputSchema),
-        });
+          name: tool.id,
+          description: tool.description,
+          parameters: normalizeSchema(tool.inputSchema),
+          async execute(_id: string, params: unknown) {
+            const result = await origExecute(params);
+            return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+          },
+        } as unknown as ToolDefinition);
       },
     };
 

@@ -68,11 +68,11 @@ async function getList(client: MynApiClient, input: ListsInput) {
   // Get current user's household if not specified
   let householdId = input.householdId;
   if (!householdId) {
-    const profile = await client.get<{ households: Array<{ id: string; name: string }> }>('/api/v1/customers/me');
-    if (!profile.households || profile.households.length === 0) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
       return errorResult('No household found. Please specify householdId.');
     }
-    householdId = profile.households[0].id;
+    householdId = household.id;
   }
 
   const data = await client.get<{
@@ -102,11 +102,11 @@ async function addItem(client: MynApiClient, input: ListsInput) {
   // Get household ID if not provided
   let householdId = input.householdId;
   if (!householdId) {
-    const profile = await client.get<{ households: Array<{ id: string }> }>('/api/v1/customers/me');
-    if (!profile.households || profile.households.length === 0) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
       return errorResult('No household found. Please specify householdId.');
     }
-    householdId = profile.households[0].id;
+    householdId = household.id;
   }
 
   const body: Record<string, unknown> = {
@@ -120,7 +120,7 @@ async function addItem(client: MynApiClient, input: ListsInput) {
   const data = await client.post<{
     itemId: string;
     added: boolean;
-  }>(`/api/v1/households/${householdId}/grocery-list/items`, body);
+  }>(`/api/v1/households/${householdId}/grocery-list`, body);
 
   return jsonResult(data);
 }
@@ -133,11 +133,11 @@ async function toggleItem(client: MynApiClient, input: ListsInput) {
   // Get household ID if not provided
   let householdId = input.householdId;
   if (!householdId) {
-    const profile = await client.get<{ households: Array<{ id: string }> }>('/api/v1/customers/me');
-    if (!profile.households || profile.households.length === 0) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
       return errorResult('No household found. Please specify householdId.');
     }
-    householdId = profile.households[0].id;
+    householdId = household.id;
   }
 
   const body: Record<string, unknown> = {};
@@ -146,7 +146,7 @@ async function toggleItem(client: MynApiClient, input: ListsInput) {
   const data = await client.patch<{
     itemId: string;
     checked: boolean;
-  }>(`/api/v1/households/${householdId}/grocery-list/items/${input.itemId}`, body);
+  }>(`/api/v1/households/${householdId}/grocery-list/${input.itemId}/toggle`, body);
 
   return jsonResult(data);
 }
@@ -159,11 +159,11 @@ async function bulkAddItems(client: MynApiClient, input: ListsInput) {
   // Get household ID if not provided
   let householdId = input.householdId;
   if (!householdId) {
-    const profile = await client.get<{ households: Array<{ id: string }> }>('/api/v1/customers/me');
-    if (!profile.households || profile.households.length === 0) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
       return errorResult('No household found. Please specify householdId.');
     }
-    householdId = profile.households[0].id;
+    householdId = household.id;
   }
 
   const body: Record<string, unknown> = {
@@ -177,7 +177,7 @@ async function bulkAddItems(client: MynApiClient, input: ListsInput) {
   const data = await client.post<{
     addedCount: number;
     itemIds: string[];
-  }>(`/api/v1/households/${householdId}/grocery-list/items/bulk`, body);
+  }>(`/api/v1/households/${householdId}/grocery-list/bulk`, body);
 
   return jsonResult(data);
 }
@@ -186,11 +186,11 @@ async function convertToTasks(client: MynApiClient, input: ListsInput) {
   // Get household ID if not provided
   let householdId = input.householdId;
   if (!householdId) {
-    const profile = await client.get<{ households: Array<{ id: string }> }>('/api/v1/customers/me');
-    if (!profile.households || profile.households.length === 0) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
       return errorResult('No household found. Please specify householdId.');
     }
-    householdId = profile.households[0].id;
+    householdId = household.id;
   }
 
   const body: Record<string, unknown> = {

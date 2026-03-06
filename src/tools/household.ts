@@ -64,11 +64,11 @@ export async function executeHousehold(
 async function getHouseholdId(client: MynApiClient, providedId?: string): Promise<string | null> {
   if (providedId) return providedId;
 
-  const profile = await client.get<{ households: Array<{ id: string }> }>('/api/v1/customers/me');
-  if (!profile.households || profile.households.length === 0) {
+  const household = await client.get<{ id: string }>('/api/v1/households/current');
+  if (!household || !household.id) {
     return null;
   }
-  return profile.households[0].id;
+  return household.id;
 }
 
 async function getMembers(client: MynApiClient, input: HouseholdInput) {
@@ -143,7 +143,7 @@ async function getChores(client: MynApiClient, input: HouseholdInput) {
       difficulty: 'easy' | 'medium' | 'hard';
       category?: string;
     }>;
-  }>(`/api/v2/chores?householdId=${householdId}`);
+  }>(`/api/v2/chores/today?householdId=${householdId}`);
 
   return jsonResult(data);
 }
@@ -157,8 +157,20 @@ async function getChoreSchedule(client: MynApiClient, input: HouseholdInput) {
   const params = new URLSearchParams();
   params.append('householdId', householdId);
 
-  if (input.date) params.append('date', input.date);
-  if (input.weekStart) params.append('weekStart', input.weekStart);
+  // Default date range: today + 7 days if no specific dates provided
+  const today = new Date().toISOString().split('T')[0];
+  const startDate = input.date ?? input.weekStart ?? today;
+  params.append('startDate', startDate);
+
+  if (input.date) {
+    // Single date: use same date as end
+    params.append('endDate', input.date);
+  } else {
+    // Range: weekStart + 7 days, or default 7 days from today
+    const end = new Date(startDate);
+    end.setDate(end.getDate() + 7);
+    params.append('endDate', end.toISOString().split('T')[0]);
+  }
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
 
@@ -178,7 +190,7 @@ async function getChoreSchedule(client: MynApiClient, input: HouseholdInput) {
     }>;
     totalChores: number;
     completedChores: number;
-  }>(`/api/v2/chores/schedule${queryString}`);
+  }>(`/api/v2/chores/schedule/range${queryString}`);
 
   return jsonResult(data);
 }
@@ -198,7 +210,7 @@ async function completeChore(client: MynApiClient, input: HouseholdInput) {
     completed: boolean;
     completedAt: string;
     nextDueDate?: string;
-  }>(`/api/v2/chores/${input.choreId}/complete`, body);
+  }>(`/api/v2/chores/instances/${input.choreId}/complete`, body);
 
   return jsonResult(data);
 }

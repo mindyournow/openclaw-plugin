@@ -79,7 +79,7 @@ async function listProjects(client: MynApiClient, input: ProjectsInput) {
         criticalTasks: number;
       };
     }>;
-  }>(`/api/project${queryString}`);
+  }>(`/api/project/defaults${queryString}`);
 
   return jsonResult(data);
 }
@@ -132,7 +132,7 @@ async function createProject(client: MynApiClient, input: ProjectsInput) {
     id: string;
     name: string;
     created: boolean;
-  }>('/api/project', body);
+  }>('/api/project/create', body);
 
   return jsonResult(data);
 }
@@ -146,16 +146,12 @@ async function moveTask(client: MynApiClient, input: ProjectsInput) {
     return errorResult('targetProjectId is required for move_task action');
   }
 
-  const body: Record<string, unknown> = {
-    projectId: input.targetProjectId
-  };
-
   const data = await client.put<{
     taskId: string;
     previousProjectId?: string;
     newProjectId: string;
     moved: boolean;
-  }>(`/api/v2/unified-tasks/${input.taskId}/project`, body);
+  }>(`/api/project/${input.targetProjectId}/moveTaskToProject/${input.taskId}`);
 
   return jsonResult(data);
 }

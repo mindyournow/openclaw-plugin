@@ -67,50 +67,27 @@ export async function executeMemory(
   }
 }
 
-async function remember(client: MynApiClient, input: MemoryInput) {
+async function remember(_client: MynApiClient, input: MemoryInput) {
   if (!input.content) {
     return errorResult('content is required for remember action');
   }
 
-  const body: Record<string, unknown> = {
-    content: input.content
-  };
-
-  if (input.category) body.category = input.category;
-  if (input.tags) body.tags = input.tags;
-  if (input.importance) body.importance = input.importance;
-  if (input.expiresAt) body.expiresAt = input.expiresAt;
-
-  const data = await client.post<{
-    memoryId: string;
-    stored: boolean;
-    createdAt: string;
-  }>('/api/v1/customers/memories', body);
-
-  return jsonResult(data);
+  // The backend does not expose a POST /api/v1/customers/memories endpoint.
+  // Memories are created automatically through the AI conversation system (Kaia).
+  // To persist a memory, include it naturally in the conversation context so
+  // the backend's AI service stores it on your behalf.
+  return errorResult(
+    'Direct memory creation is not supported. Memories are created ' +
+    'automatically through conversations with the AI assistant. ' +
+    'To store a memory, mention it in conversation context.'
+  );
 }
 
 async function recall(client: MynApiClient, input: MemoryInput) {
-  if (input.memoryId) {
-    // Get specific memory
-    const data = await client.get<{
-      memoryId: string;
-      content: string;
-      category: string;
-      tags: string[];
-      importance: string;
-      createdAt: string;
-      accessedAt: string;
-      accessCount: number;
-      expiresAt?: string;
-    }>(`/api/v1/customers/memories/${input.memoryId}`);
-
-    return jsonResult(data);
-  }
-
-  // Get recent memories
-  const data = await client.get<{
-    memories: Array<{
+  // The backend only supports GET /api/v1/customers/memories (list all).
+  // There is no GET /api/v1/customers/memories/{memoryId} endpoint.
+  const data = await client.get<
+    Array<{
       memoryId: string;
       content: string;
       category: string;
@@ -118,8 +95,18 @@ async function recall(client: MynApiClient, input: MemoryInput) {
       importance: string;
       createdAt: string;
       accessedAt?: string;
-    }>;
-  }>('/api/v1/customers/memories?limit=10');
+    }>
+  >('/api/v1/customers/memories');
+
+  if (input.memoryId) {
+    // Filter client-side for a specific memory
+    const memories = Array.isArray(data) ? data : [];
+    const match = memories.find(m => m.memoryId === input.memoryId);
+    if (!match) {
+      return errorResult(`Memory not found: ${input.memoryId}`);
+    }
+    return jsonResult(match);
+  }
 
   return jsonResult(data);
 }
@@ -138,31 +125,42 @@ async function forget(client: MynApiClient, input: MemoryInput) {
 }
 
 async function searchMemories(client: MynApiClient, input: MemoryInput) {
-  const params = new URLSearchParams();
-
-  if (input.query) params.append('q', input.query);
-  if (input.filterCategory) params.append('category', input.filterCategory);
-  if (input.filterTags) {
-    input.filterTags.forEach(tag => params.append('tag', tag));
-  }
-  if (input.limit) params.append('limit', input.limit.toString());
-
-  const queryString = params.toString() ? `?${params.toString()}` : '';
-
-  const data = await client.get<{
-    results: Array<{
+  // The backend has no /api/v1/customers/memories/search endpoint.
+  // Fetch all memories and filter client-side.
+  const data = await client.get<
+    Array<{
       memoryId: string;
       content: string;
       category: string;
       tags: string[];
       importance: string;
-      relevance: number;
       createdAt: string;
-    }>;
-    total: number;
-  }>(`/api/v1/customers/memories/search${queryString}`);
+    }>
+  >('/api/v1/customers/memories');
 
-  return jsonResult(data);
+  let results = Array.isArray(data) ? data : [];
+
+  // Client-side filtering
+  if (input.query) {
+    const q = input.query.toLowerCase();
+    results = results.filter(m =>
+      m.content?.toLowerCase().includes(q) ||
+      m.tags?.some(t => t.toLowerCase().includes(q))
+    );
+  }
+  if (input.filterCategory) {
+    results = results.filter(m => m.category === input.filterCategory);
+  }
+  if (input.filterTags && input.filterTags.length > 0) {
+    results = results.filter(m =>
+      input.filterTags!.every(tag => m.tags?.includes(tag))
+    );
+  }
+  if (input.limit) {
+    results = results.slice(0, input.limit);
+  }
+
+  return jsonResult({ results, total: results.length });
 }
 
 export function registerMemoryTool(api: OpenClawPluginApi, client: MynApiClient): void {

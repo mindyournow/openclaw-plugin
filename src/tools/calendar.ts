@@ -131,18 +131,8 @@ async function getMeetings(client: MynApiClient, input: CalendarInput) {
   if (input.limit) params.append('limit', input.limit.toString());
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
-  const data = await client.get<{
-    meetings: Array<{
-      id: string;
-      title: string;
-      startTime: string;
-      endTime: string;
-      attendees: string[];
-      location?: string;
-      isRecurring: boolean;
-    }>;
-    total: number;
-  }>(`/api/v2/calendar/meetings${queryString}`);
+  // No dedicated meetings list endpoint — use events endpoint
+  const data = await client.get<unknown>(`/api/v2/calendar/events${queryString}`);
   return jsonResult(data);
 }
 

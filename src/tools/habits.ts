@@ -71,22 +71,12 @@ async function getStreaks(client: MynApiClient, input: HabitsInput) {
         date: string;
         completed: boolean;
       }>;
-    }>(`/api/v1/habit-chains/${input.habitId}/streaks${input.includeHistory ? '?includeHistory=true' : ''}`);
+    }>(`/api/v2/unified-tasks/${input.habitId}/streak${input.includeHistory ? '?includeHistory=true' : ''}`);
     return jsonResult(data);
   }
 
-  // Get all habit streaks
-  const data = await client.get<{
-    habits: Array<{
-      habitId: string;
-      title: string;
-      currentStreak: number;
-      longestStreak: number;
-      totalCompletions: number;
-      lastCompletedAt?: string;
-    }>;
-  }>('/api/v1/habit-chains/streaks');
-  return jsonResult(data);
+  // No bulk streaks endpoint — use schedule to see all habits
+  return errorResult('habitId is required for streaks action. Use the schedule action to see all habits.');
 }
 
 async function skipHabit(client: MynApiClient, input: HabitsInput) {
@@ -103,7 +93,7 @@ async function skipHabit(client: MynApiClient, input: HabitsInput) {
     skippedDate: string;
     streakPreserved: boolean;
     newStreakCount: number;
-  }>(`/api/v1/habit-chains/${input.habitId}/skip`, body);
+  }>(`/api/v2/unified-tasks/${input.habitId}/skip`, body);
   return jsonResult(data);
 }
 
@@ -121,7 +111,7 @@ async function getChains(client: MynApiClient, input: HabitsInput) {
       trigger?: string;
       location?: string;
       totalCompletions: number;
-    }>(`/api/v1/habit-chains/${input.chainId}`);
+    }>(`/api/habits/chains/${input.chainId}/status`);
     return jsonResult(data);
   }
 
@@ -134,7 +124,7 @@ async function getChains(client: MynApiClient, input: HabitsInput) {
       totalCompletions: number;
       lastCompletedAt?: string;
     }>;
-  }>('/api/v1/habit-chains');
+  }>('/api/habits/chains');
   return jsonResult(data);
 }
 
@@ -156,7 +146,7 @@ async function getSchedule(client: MynApiClient, input: HabitsInput) {
       }>;
     }>;
     habitsDue: number;
-  }>(`/api/v1/habit-chains/schedule${queryString}`);
+  }>(`/api/v2/unified-tasks/schedule${queryString}`);
   return jsonResult(data);
 }
 

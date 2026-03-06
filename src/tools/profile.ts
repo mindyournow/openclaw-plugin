@@ -93,7 +93,7 @@ async function getInfo(client: MynApiClient) {
       currentStreak: number;
       longestStreak: number;
     };
-  }>('/api/v1/customers/me');
+  }>('/api/v1/customers');
 
   return jsonResult(data);
 }
@@ -120,87 +120,60 @@ async function getGoals(client: MynApiClient) {
 }
 
 async function updateGoals(client: MynApiClient, input: ProfileInput) {
-  if (input.goalId) {
-    // Update specific goal
-    if (!input.goals || input.goals.length === 0) {
-      return errorResult('goals array is required when goalId is provided for update_goals action');
-    }
-
-    const goal = input.goals[0];
-    const body: Record<string, unknown> = {};
-
-    if (goal.title) body.title = goal.title;
-    if (goal.description !== undefined) body.description = goal.description;
-    if (goal.targetDate) body.targetDate = goal.targetDate;
-    if (goal.priority) body.priority = goal.priority;
-    if (goal.status) body.status = goal.status;
-
-    const data = await client.put<{
-      goalId: string;
-      updated: boolean;
-    }>(`/api/v1/customers/goals/${input.goalId}`, body);
-
-    return jsonResult(data);
-  }
-
-  // Create new goals
   if (!input.goals || input.goals.length === 0) {
     return errorResult('goals array is required for update_goals action');
   }
 
-  const data = await client.post<{
-    created: Array<{
-      goalId: string;
+  // PUT /api/v1/customers/goals — sends the full goals object
+  const data = await client.put<{
+    goals: Array<{
+      id: string;
       title: string;
     }>;
+    updated: boolean;
   }>('/api/v1/customers/goals', { goals: input.goals });
 
   return jsonResult(data);
 }
 
+// Maps preferenceKey to the actual API endpoint path
+const PREFERENCE_ENDPOINTS: Record<string, string> = {
+  'notification-preferences': '/api/v1/customers/notification-preferences',
+  'coaching-intensity': '/api/v1/customers/coaching-intensity',
+  'theme-preference': '/api/v1/customers/theme-preference',
+};
+
 async function managePreferences(client: MynApiClient, input: ProfileInput) {
   if (input.preferenceKey !== undefined) {
-    // Set or get specific preference
+    const endpoint = PREFERENCE_ENDPOINTS[input.preferenceKey];
+    if (!endpoint) {
+      return errorResult(
+        `Unknown preferenceKey: ${input.preferenceKey}. Valid keys: ${Object.keys(PREFERENCE_ENDPOINTS).join(', ')}`
+      );
+    }
+
     if (input.preferenceValue !== undefined) {
-      // Set preference
-      const body: Record<string, unknown> = {
-        key: input.preferenceKey,
-        value: input.preferenceValue
-      };
-
-      if (input.preferenceCategory) body.category = input.preferenceCategory;
-
-      const data = await client.put<{
-        key: string;
-        updated: boolean;
-      }>('/api/v1/customers/preferences', body);
-
+      // Update preference
+      const data = await client.put<unknown>(endpoint, input.preferenceValue);
       return jsonResult(data);
     }
 
-    // Get specific preference
-    const data = await client.get<{
-      key: string;
-      value: unknown;
-      category: string;
-      updatedAt: string;
-    }>(`/api/v1/customers/preferences/${input.preferenceKey}`);
-
+    // Get preference
+    const data = await client.get<unknown>(endpoint);
     return jsonResult(data);
   }
 
-  // Get all preferences
-  const params = new URLSearchParams();
-  if (input.preferenceCategory) params.append('category', input.preferenceCategory);
+  // No preferenceKey — return all preferences by fetching each endpoint
+  const results: Record<string, unknown> = {};
+  for (const [key, endpoint] of Object.entries(PREFERENCE_ENDPOINTS)) {
+    try {
+      results[key] = await client.get<unknown>(endpoint);
+    } catch {
+      results[key] = null;
+    }
+  }
 
-  const queryString = params.toString() ? `?${params.toString()}` : '';
-
-  const data = await client.get<{
-    preferences: Record<string, unknown>;
-    categories: string[];
-  }>(`/api/v1/customers/preferences${queryString}`);
-
-  return jsonResult(data);
+  return jsonResult({ preferences: results });
 }
 
 export function registerProfileTool(api: OpenClawPluginApi, client: MynApiClient): void {

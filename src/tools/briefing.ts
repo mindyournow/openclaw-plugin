@@ -100,11 +100,12 @@ async function generateBriefing(client: MynApiClient, input: BriefingInput) {
 async function getBriefing(client: MynApiClient, input: BriefingInput) {
   if (!input.briefingId) {
     // Get the latest briefing if no ID provided
-    const data = await client.get<unknown>('/api/v2/compass/latest');
+    const data = await client.get<unknown>('/api/v2/compass/current');
     return jsonResult(data);
   }
 
-  const data = await client.get<unknown>(`/api/v2/compass/briefings/${input.briefingId}`);
+  // No per-ID endpoint exists; use /current for the active briefing or /history for past ones
+  const data = await client.get<unknown>('/api/v2/compass/current');
   return jsonResult(data);
 }
 
@@ -124,7 +125,7 @@ async function applyCorrection(client: MynApiClient, input: BriefingInput) {
     correctionId: string;
     appliedAt: string;
     briefingUpdated: boolean;
-  }>('/api/v2/compass/corrections', body);
+  }>('/api/v2/compass/corrections/apply', body);
   return jsonResult(data);
 }
 

@@ -67,106 +67,30 @@ export async function executePlanning(
   }
 }
 
-async function createPlan(client: MynApiClient, input: PlanningInput) {
-  if (!input.goal && (!input.tasks || input.tasks.length === 0)) {
-    return errorResult('goal or tasks is required for plan action');
-  }
+async function createPlan(client: MynApiClient, _input: PlanningInput) {
+  // Triggers the AI planning engine to plan/schedule tasks for the current user.
+  // The backend PlanningController at GET /planning/plan handles this automatically
+  // based on the authenticated user's tasks — no request body is needed.
+  const data = await client.get<string>('/planning/plan');
 
-  const body: Record<string, unknown> = {};
-
-  if (input.goal) body.goal = input.goal;
-  if (input.tasks) body.tasks = input.tasks;
-  if (input.constraints) body.constraints = input.constraints;
-
-  const data = await client.post<{
-    planId: string;
-    goal: string;
-    estimatedDuration: number; // in minutes
-    schedule: Array<{
-      step: number;
-      title: string;
-      description?: string;
-      estimatedMinutes: number;
-      suggestedTimeSlot?: {
-        start: string;
-        end: string;
-      };
-      dependencies: string[];
-    }>;
-    conflicts: Array<{
-      taskTitle: string;
-      reason: string;
-      suggestion: string;
-    }>;
-    suggestions: string[];
-    createdAt: string;
-  }>('/api/schedules/plan', body);
-
-  return jsonResult(data);
+  return jsonResult({ result: data });
 }
 
-async function scheduleAll(client: MynApiClient, input: PlanningInput) {
-  const body: Record<string, unknown> = {};
+async function scheduleAll(client: MynApiClient, _input: PlanningInput) {
+  // Auto-schedules all eligible tasks (today or past start date, not completed,
+  // not OVER_THE_HORIZON/PARKING_LOT) for the authenticated user, then triggers planning.
+  // The backend PlanningController at GET /planning/scheduleAll handles this automatically.
+  const data = await client.get<string>('/planning/scheduleAll');
 
-  if (input.date) body.date = input.date;
-  if (input.respectExisting !== undefined) body.respectExisting = input.respectExisting;
-  if (input.bufferMinutes !== undefined) body.bufferMinutes = input.bufferMinutes;
-
-  const data = await client.post<{
-    date: string;
-    scheduled: Array<{
-      taskId: string;
-      title: string;
-      scheduledStart: string;
-      scheduledEnd: string;
-      priority: string;
-    }>;
-    unscheduled: Array<{
-      taskId: string;
-      title: string;
-      reason: string;
-    }>;
-    conflicts: Array<{
-      type: string;
-      description: string;
-      tasksInvolved: string[];
-    }>;
-    stats: {
-      totalScheduled: number;
-      totalMinutes: number;
-      byPriority: Record<string, number>;
-    };
-  }>('/api/schedules/auto', body);
-
-  return jsonResult(data);
+  return jsonResult({ result: data });
 }
 
 async function reschedule(client: MynApiClient, input: PlanningInput) {
-  if (!input.taskIds || input.taskIds.length === 0) {
-    return errorResult('taskIds array is required for reschedule action');
-  }
-
-  const body: Record<string, unknown> = {
-    taskIds: input.taskIds
-  };
-
-  if (input.reason) body.reason = input.reason;
-  if (input.targetDate) body.targetDate = input.targetDate;
-  if (input.spreadOverDays !== undefined) body.spreadOverDays = input.spreadOverDays;
-
-  const data = await client.post<{
-    rescheduled: Array<{
-      taskId: string;
-      title: string;
-      oldDate: string;
-      newDate: string;
-    }>;
-    failed: Array<{
-      taskId: string;
-      reason: string;
-    }>;
-    suggestions: string[];
-  }>('/api/schedules/reschedule', body);
+  // "Kick the can" — reschedules overdue/today tasks into the future based on priority.
+  // Optionally pass rebalance=true to redistribute all uncompleted tasks evenly.
+  // The backend PlanningController at GET /planning/kickTheCan handles this automatically.
+  const rebalance = input.spreadOverDays && input.spreadOverDays > 1 ? 'true' : 'false';
+  const data = await client.get<unknown>(`/planning/kickTheCan?rebalance=${rebalance}`);
 
   return jsonResult(data);
 }

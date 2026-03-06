@@ -91,7 +91,7 @@ async function createCountdown(client: MynApiClient, input: TimersInput) {
     endTime: string;
     label?: string;
     status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
-  }>('/api/v2/timers', body);
+  }>('/api/v2/timers/countdown', body);
 
   return jsonResult(data);
 }
@@ -117,7 +117,7 @@ async function createAlarm(client: MynApiClient, input: TimersInput) {
     label?: string;
     recurrence?: string;
     status: 'ACTIVE' | 'TRIGGERED' | 'SNOOZED';
-  }>('/api/v2/timers', body);
+  }>('/api/v2/timers/alarm', body);
 
   return jsonResult(data);
 }
@@ -152,12 +152,12 @@ async function cancelTimer(client: MynApiClient, input: TimersInput) {
     return errorResult('timerId is required for cancel action');
   }
 
-  await client.delete(`/api/v2/timers/${input.timerId}`);
+  const data = await client.post<{
+    timerId: string;
+    status: string;
+  }>(`/api/v2/timers/${input.timerId}/cancel`);
 
-  return jsonResult({
-    cancelled: true,
-    timerId: input.timerId
-  });
+  return jsonResult(data);
 }
 
 async function snoozeTimer(client: MynApiClient, input: TimersInput) {
@@ -202,7 +202,7 @@ async function createPomodoro(client: MynApiClient, input: TimersInput) {
     longBreakDuration: number;
     status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
     nextTransitionAt?: string;
-  }>('/api/v2/timers', body);
+  }>('/api/v2/timers/countdown', body);
 
   return jsonResult(data);
 }
