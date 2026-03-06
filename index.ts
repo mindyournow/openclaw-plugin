@@ -120,12 +120,15 @@ export default {
     // Create shared API client
     const client = new MynApiClient(baseUrl, apiKey);
 
-    // Wrap registerTool to normalize schemas for cross-provider compatibility
+    // Wrap registerTool to normalize for cross-provider compatibility:
+    // 1. Convert TypeBox anyOf/const → enum in schemas
+    // 2. Sanitize tool name to be API-safe (some providers reject spaces/uppercase)
     const wrappedApi: OpenClawPluginApi = {
       ...api,
       registerTool(tool: ToolDefinition) {
         api.registerTool({
           ...tool,
+          name: tool.id, // Use id as name — guaranteed API-safe (letters, numbers, underscores)
           inputSchema: normalizeSchema(tool.inputSchema),
         });
       },
