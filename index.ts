@@ -19,14 +19,16 @@ import { registerHouseholdTool } from './src/tools/household.js';
 import { registerProjectsTool } from './src/tools/projects.js';
 import { registerPlanningTool } from './src/tools/planning.js';
 
+export interface ToolDefinition {
+  id: string;
+  name: string;
+  description: string;
+  inputSchema: unknown;
+  execute: (input: unknown) => Promise<unknown>;
+}
+
 export interface OpenClawPluginApi {
-  registerTool(tool: {
-    id: string;
-    name: string;
-    description: string;
-    inputSchema: unknown;
-    execute: (input: unknown) => Promise<unknown>;
-  }): void;
+  registerTool(tool: ToolDefinition): void;
   logger: {
     debug(message: string): void;
     info(message: string): void;
@@ -34,6 +36,47 @@ export interface OpenClawPluginApi {
     error(message: string): void;
   };
   pluginConfig?: Record<string, unknown>;
+}
+
+/**
+ * Normalize JSON Schema for cross-provider compatibility.
+ *
+ * TypeBox generates `anyOf: [{const: "x", type: "string"}, ...]` for unions
+ * of literals. Many LLM providers (Moonshot/Kimi, Google, etc.) only support
+ * the simpler `enum: ["x", ...]` format. This recursively converts.
+ */
+function normalizeSchema(schema: unknown): unknown {
+  if (schema === null || typeof schema !== 'object') return schema;
+  const s = schema as Record<string, unknown>;
+
+  // Convert anyOf of const literals → enum
+  if (Array.isArray(s.anyOf)) {
+    const allConst = s.anyOf.every(
+      (item: unknown) => item !== null && typeof item === 'object' && 'const' in (item as Record<string, unknown>)
+    );
+    if (allConst) {
+      const enumValues = s.anyOf.map((item: unknown) => (item as Record<string, unknown>).const);
+      const { anyOf: _, ...rest } = s;
+      return { ...rest, type: 'string', enum: enumValues };
+    }
+  }
+
+  // Recurse into properties
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(s)) {
+    if (key === 'properties' && value !== null && typeof value === 'object') {
+      const props: Record<string, unknown> = {};
+      for (const [pKey, pValue] of Object.entries(value as Record<string, unknown>)) {
+        props[pKey] = normalizeSchema(pValue);
+      }
+      result[key] = props;
+    } else if (Array.isArray(value)) {
+      result[key] = value.map((item: unknown) => normalizeSchema(item));
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 export interface MynPluginConfig {
@@ -77,19 +120,30 @@ export default {
     // Create shared API client
     const client = new MynApiClient(baseUrl, apiKey);
 
+    // Wrap registerTool to normalize schemas for cross-provider compatibility
+    const wrappedApi: OpenClawPluginApi = {
+      ...api,
+      registerTool(tool: ToolDefinition) {
+        api.registerTool({
+          ...tool,
+          inputSchema: normalizeSchema(tool.inputSchema),
+        });
+      },
+    };
+
     // Register all 12 tools
-    registerTasksTool(api, client);
-    registerBriefingTool(api, client);
-    registerCalendarTool(api, client);
-    registerHabitsTool(api, client);
-    registerListsTool(api, client);
-    registerSearchTool(api, client);
-    registerTimersTool(api, client);
-    registerMemoryTool(api, client);
-    registerProfileTool(api, client);
-    registerHouseholdTool(api, client);
-    registerProjectsTool(api, client);
-    registerPlanningTool(api, client);
+    registerTasksTool(wrappedApi, client);
+    registerBriefingTool(wrappedApi, client);
+    registerCalendarTool(wrappedApi, client);
+    registerHabitsTool(wrappedApi, client);
+    registerListsTool(wrappedApi, client);
+    registerSearchTool(wrappedApi, client);
+    registerTimersTool(wrappedApi, client);
+    registerMemoryTool(wrappedApi, client);
+    registerProfileTool(wrappedApi, client);
+    registerHouseholdTool(wrappedApi, client);
+    registerProjectsTool(wrappedApi, client);
+    registerPlanningTool(wrappedApi, client);
 
     api.logger.info('[myn] Registered 12 tools: tasks, briefing, calendar, habits, lists, search, timers, memory, profile, household, projects, planning');
   }
