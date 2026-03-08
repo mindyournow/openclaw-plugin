@@ -102,13 +102,12 @@ async function createAlarm(client: MynApiClient, input: TimersInput) {
   }
 
   const body: Record<string, unknown> = {
-    type: 'ALARM',
+    name: input.label ?? 'Alarm',
     alarmTime: input.alarmTime
   };
 
-  if (input.label) body.label = input.label;
   if (input.recurrence) body.recurrence = input.recurrence;
-  if (input.sound) body.sound = input.sound;
+  if (input.sound) body.completionSound = input.sound;
 
   const data = await client.post<{
     timerId: string;
