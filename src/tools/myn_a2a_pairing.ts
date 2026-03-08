@@ -10,6 +10,7 @@
 import { Type } from '@sinclair/typebox';
 import { errorResult, jsonResult } from '../client.js';
 import { computeCapabilityHash } from './capabilityHash.js';
+import { checkAndSync } from './syncOnMismatch.js';
 
 export const MynA2APairingInputSchema = Type.Object({
   action: Type.Union([
@@ -113,12 +114,13 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
         };
         if (input.conversationId) msgBody.conversationId = input.conversationId;
 
-        if (caps.length > 0) {
-          const manifest = {
-            schemaVersion: '1.0',
-            agentInfo: { name: input.agentName ?? 'openclaw', version: '1.0.0' },
-            capabilities: caps,
-          };
+        const manifest = caps.length > 0 ? {
+          schemaVersion: '1.0',
+          agentInfo: { name: input.agentName ?? 'openclaw', version: '1.0.0' },
+          capabilities: caps,
+        } : null;
+
+        if (manifest) {
           msgBody.capabilityHash = computeCapabilityHash(manifest);
         }
 
@@ -127,6 +129,11 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
           headers: { 'Content-Type': 'application/json', 'X-Agent-Key': input.agentKey },
           body: JSON.stringify(msgBody),
         }) as { capabilityUpdatePending?: boolean } | null;
+
+        // Auto-sync capabilities when server signals a hash mismatch — MIN-734
+        if (manifest) {
+          checkAndSync(data, base, input.agentKey, manifest);
+        }
 
         return jsonResult(data);
       }
