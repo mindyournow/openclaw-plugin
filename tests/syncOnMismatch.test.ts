@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { checkAndSync, withSyncOnMismatch } from '../src/tools/syncOnMismatch.js';
+import { checkAndSync, withSyncOnMismatch, _clearInFlightSyncsForTest } from '../src/tools/syncOnMismatch.js';
 
 /**
  * Tests for syncOnMismatch middleware — auto capability re-sync on hash mismatch.
@@ -15,6 +15,7 @@ const MANIFEST = {
 describe('checkAndSync', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
+    _clearInFlightSyncsForTest();
   });
 
   it('does not fetch when capabilityUpdatePending is false', () => {
@@ -70,11 +71,54 @@ describe('checkAndSync', () => {
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe('https://api.example.com/a2a/message');
   });
+
+  it('logs a warning when sync fetch returns non-ok response', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      text: async () => 'Internal Server Error',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    checkAndSync({ capabilityUpdatePending: true }, 'https://api.example.com', 'key-fail', MANIFEST);
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[syncOnMismatch] Capability sync failed:',
+      expect.stringContaining('500'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('dedup guard prevents duplicate syncs for the same agent key', async () => {
+    // Slow fetch so the first sync is still in-flight when the second fires
+    let resolveFirst!: () => void;
+    const firstFetchInflight = new Promise<void>(r => { resolveFirst = r; });
+
+    const mockFetch = vi.fn().mockImplementation(async () => {
+      await firstFetchInflight;
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    // Both calls use the same key — the second should be deduplicated
+    checkAndSync({ capabilityUpdatePending: true }, 'https://api.example.com', 'key-same', MANIFEST);
+    checkAndSync({ capabilityUpdatePending: true }, 'https://api.example.com', 'key-same', MANIFEST);
+
+    // Sync code before the first `await fetch()` runs synchronously, so dedup is already active
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    resolveFirst();
+  });
 });
 
 describe('withSyncOnMismatch', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
+    _clearInFlightSyncsForTest();
   });
 
   it('returns the result of the wrapped fetchFn', async () => {

@@ -7,6 +7,9 @@
  * the stored hash on the server side no longer matches OpenClaw's current
  * capabilities. This middleware wraps every A2A fetch call and automatically
  * re-sends the capability manifest whenever the flag is set.
+ *
+ * A per-key dedup guard prevents concurrent duplicate syncs from firing when
+ * multiple requests arrive at nearly the same time.
  */
 
 import { computeCapabilityHash } from './capabilityHash.js';
@@ -25,6 +28,13 @@ interface CapabilityManifest {
 }
 
 /**
+ * In-flight dedup set: tracks `${agentKey}@${base}` to avoid sending duplicate
+ * capability syncs when multiple A2A responses with capabilityUpdatePending=true
+ * arrive before the first sync completes.
+ */
+const inFlightSyncs = new Set<string>();
+
+/**
  * sendCapabilityUpdate — POST the current capability manifest to MYN.
  * Called automatically by syncOnMismatch when capabilityUpdatePending is true.
  */
@@ -34,28 +44,39 @@ async function sendCapabilityUpdate(
   manifest: CapabilityManifest,
 ): Promise<void> {
   const base = mynBaseUrl.replace(/\/$/, '');
-  const capabilityHash = computeCapabilityHash(manifest);
+  const dedupKey = `${agentKey}@${base}`;
 
-  const body = {
-    from: manifest.agentInfo.name,
-    intent: 'briefing',
-    meta: { type: 'capability-update' },
-    capabilityHash,
-    capabilityManifest: manifest,
-  };
+  if (inFlightSyncs.has(dedupKey)) {
+    return; // already syncing — skip duplicate
+  }
 
-  const response = await fetch(`${base}/a2a/message`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Agent-Key': agentKey,
-    },
-    body: JSON.stringify(body),
-  });
+  inFlightSyncs.add(dedupKey);
+  try {
+    const capabilityHash = computeCapabilityHash(manifest);
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => response.statusText);
-    throw new Error(`Capability sync failed: HTTP ${response.status}: ${text}`);
+    const body = {
+      from: manifest.agentInfo.name,
+      intent: 'briefing',
+      meta: { type: 'capability-update' },
+      capabilityHash,
+      capabilityManifest: manifest,
+    };
+
+    const response = await fetch(`${base}/a2a/message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Agent-Key': agentKey,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => response.statusText);
+      throw new Error(`Capability sync failed: HTTP ${response.status}: ${text}`);
+    }
+  } finally {
+    inFlightSyncs.delete(dedupKey);
   }
 }
 
@@ -67,12 +88,6 @@ async function sendCapabilityUpdate(
  * @param agentKey       Current X-Agent-Key for authenticated requests.
  * @param manifest       Current capability manifest to send if a mismatch is detected.
  * @returns              The original response from fetchFn (the sync is a side-effect).
- *
- * @example
- * const response = await withSyncOnMismatch(
- *   () => a2aFetch(`${base}/a2a/message`, { method: 'POST', ... }),
- *   base, agentKey, manifest,
- * );
  */
 export async function withSyncOnMismatch<T extends A2AResponseWithPending>(
   fetchFn: () => Promise<T>,
@@ -97,11 +112,6 @@ export async function withSyncOnMismatch<T extends A2AResponseWithPending>(
  * if capabilityUpdatePending is true.  Use this when you already have the
  * response object and want to retrofit sync behaviour without restructuring
  * the call site.
- *
- * @example
- * const data = await a2aFetch(...);
- * checkAndSync(data, base, agentKey, manifest);
- * return data;
  */
 export function checkAndSync(
   response: A2AResponseWithPending | null | undefined,
@@ -114,4 +124,9 @@ export function checkAndSync(
       console.warn('[syncOnMismatch] Capability sync failed:', err?.message ?? err);
     });
   }
+}
+
+/** Exposed for testing only — clears the dedup set between tests */
+export function _clearInFlightSyncsForTest(): void {
+  inFlightSyncs.clear();
 }

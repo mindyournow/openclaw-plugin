@@ -78,6 +78,7 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
           displayName: input.displayName ?? input.agentName,
           outboundEndpoint: input.outboundEndpoint,
           capabilityHash,
+          capabilityManifest: manifest,
         };
 
         const data = await a2aFetch(`${base}/api/v1/agent/redeem-invite`, {
@@ -95,12 +96,23 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
 
       case 'ping': {
         if (!input.agentKey) return errorResult('agentKey is required for ping');
-        const data = await a2aFetch(`${base}/a2a/message`, {
+        const pingData = await a2aFetch(`${base}/a2a/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Agent-Key': input.agentKey },
           body: JSON.stringify({ from: input.agentName ?? 'openclaw', intent: 'ping' }),
-        });
-        return jsonResult(data);
+        }) as { capabilityUpdatePending?: boolean } | null;
+
+        // Ping responses also carry capabilityUpdatePending — sync if flagged
+        if (caps.length > 0) {
+          const pingManifest = {
+            schemaVersion: '1.0',
+            agentInfo: { name: input.agentName ?? 'openclaw', version: '1.0.0' },
+            capabilities: caps,
+          };
+          checkAndSync(pingData, base, input.agentKey, pingManifest);
+        }
+
+        return jsonResult(pingData);
       }
 
       case 'send_message': {
