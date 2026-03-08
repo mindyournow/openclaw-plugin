@@ -19,19 +19,21 @@ export const CalendarInputSchema = Type.Object({
   calendarId: Type.Optional(Type.String()),
   includeAllDay: Type.Optional(Type.Boolean({ default: true })),
   limit: Type.Optional(Type.Number({ default: 50 })),
-  // create_event parameters
+  // create_event parameters — startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00")
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   description: Type.Optional(Type.String({ maxLength: 2000 })),
   startTime: Type.Optional(Type.String({ format: 'date-time' })),
   endTime: Type.Optional(Type.String({ format: 'date-time' })),
   isAllDay: Type.Optional(Type.Boolean({ default: false })),
   location: Type.Optional(Type.String()),
-  attendees: Type.Optional(Type.Array(Type.String({ format: 'email' }))),
+  // attendees: email addresses OR first names of household members (resolved automatically)
+  attendees: Type.Optional(Type.Array(Type.String())),
   recurrence: Type.Optional(Type.String()), // RRULE format
   reminders: Type.Optional(Type.Array(Type.Object({
     minutes: Type.Number(),
     method: Type.Union([Type.Literal('popup'), Type.Literal('email')])
   }))),
+  timezone: Type.Optional(Type.String()), // e.g. "America/New_York"
   // delete_event parameters
   eventId: Type.Optional(Type.String()),
   // meetings parameters
@@ -83,34 +85,109 @@ async function listEvents(client: MynApiClient, input: CalendarInput) {
   return jsonResult(data);
 }
 
+/**
+ * Normalize a time value to ISO 8601 datetime.
+ * Handles cases where the LLM passes a bare time like "16:30" alongside a startDate.
+ */
+function toIsoDateTime(time: string, date?: string): string {
+  // Already a full datetime (has 'T' separator or full date prefix like "2026-")
+  if (time.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(time)) {
+    return time;
+  }
+  // Bare time like "16:30" or "16:30:00" — combine with the provided date
+  if (date && /^\d{2}:\d{2}/.test(time)) {
+    const normalizedDate = date.length >= 10 ? date.substring(0, 10) : date;
+    const normalizedTime = /^\d{2}:\d{2}$/.test(time) ? `${time}:00` : time;
+    return `${normalizedDate}T${normalizedTime}`;
+  }
+  return time;
+}
+
+/**
+ * Resolve attendee strings to email addresses.
+ * Items containing '@' are used as-is; everything else is looked up in household members by name.
+ */
+async function resolveAttendeesToEmails(
+  client: MynApiClient,
+  attendees: string[]
+): Promise<string[]> {
+  const emails: string[] = [];
+  const namesToResolve: string[] = [];
+
+  for (const attendee of attendees) {
+    if (attendee.includes('@')) {
+      emails.push(attendee);
+    } else {
+      namesToResolve.push(attendee.toLowerCase());
+    }
+  }
+
+  if (namesToResolve.length === 0) {
+    return emails;
+  }
+
+  try {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (household?.id) {
+      const membersData = await client.get<{
+        members: Array<{ name: string; email: string }>;
+      }>(`/api/v1/households/${household.id}/members`);
+
+      const members = membersData?.members ?? [];
+      for (const name of namesToResolve) {
+        const matched = members.find(m => {
+          const memberName = m.name.toLowerCase();
+          const firstName = memberName.split(' ')[0];
+          return memberName.includes(name) || name.includes(firstName);
+        });
+        if (matched?.email) {
+          emails.push(matched.email);
+        }
+      }
+    }
+  } catch {
+    // Household lookup failed; proceed with email-only list
+  }
+
+  return emails;
+}
+
 async function createEvent(client: MynApiClient, input: CalendarInput) {
   if (!input.title) {
     return errorResult('title is required for create_event action');
   }
   if (!input.startTime) {
-    return errorResult('startTime is required for create_event action');
+    return errorResult('startTime is required for create_event action (ISO 8601 format, e.g. "2026-03-08T16:30:00")');
   }
-  if (!input.endTime && !input.isAllDay) {
+  if (!input.isAllDay && !input.endTime) {
     return errorResult('endTime is required for non-all-day events');
   }
 
+  // Normalize datetime strings — handle bare times like "16:30" alongside a startDate
+  const effectiveDate = input.startDate?.substring(0, 10);
+  const startTime = toIsoDateTime(input.startTime, effectiveDate);
+  const endTime = input.endTime ? toIsoDateTime(input.endTime, effectiveDate) : undefined;
+
+  // Resolve attendees: names → emails via household members API
+  const resolvedAttendees = input.attendees && input.attendees.length > 0
+    ? await resolveAttendeesToEmails(client, input.attendees)
+    : undefined;
+
   const body: Record<string, unknown> = {
     title: input.title,
-    startTime: input.startTime,
+    startTime,
     isAllDay: input.isAllDay ?? false
   };
 
-  if (!input.isAllDay && input.endTime) {
-    body.endTime = input.endTime;
-  }
+  if (!input.isAllDay && endTime) body.endTime = endTime;
   if (input.description) body.description = input.description;
   if (input.location) body.location = input.location;
   if (input.calendarId) body.calendarId = input.calendarId;
-  if (input.attendees) body.attendees = input.attendees;
+  if (input.timezone) body.timezone = input.timezone;
+  if (resolvedAttendees && resolvedAttendees.length > 0) body.attendees = resolvedAttendees;
   if (input.recurrence) body.recurrence = input.recurrence;
-  if (input.reminders) body.reminders = input.reminders;
 
-  const data = await client.post<unknown>('/api/v2/calendar/events', body);
+  const data = await client.post<unknown>('/api/v2/calendar/standalone-events', body);
   return jsonResult(data);
 }
 
@@ -140,7 +217,7 @@ export function registerCalendarTool(api: OpenClawPluginApi, client: MynApiClien
   api.registerTool({
     id: 'myn_calendar',
     name: 'MYN Calendar',
-    description: 'Manage calendar events and meetings. Actions: list_events, create_event, delete_event, meetings.',
+    description: 'Manage calendar events and meetings. Actions: list_events, create_event, delete_event, meetings. For create_event: startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00"). Attendees can be email addresses or household member first names.',
     inputSchema: CalendarInputSchema,
     async execute(input: unknown) {
       return executeCalendar(client, input as CalendarInput);
