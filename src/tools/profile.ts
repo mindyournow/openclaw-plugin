@@ -124,14 +124,20 @@ async function updateGoals(client: MynApiClient, input: ProfileInput) {
     return errorResult('goals array is required for update_goals action');
   }
 
-  // PUT /api/v1/customers/goals — sends the full goals object
+  // Format goals as markdown — the backend stores goals as a single text field
+  const markdown = input.goals.map(g => {
+    let line = `- **${g.title}**`;
+    if (g.status) line += ` [${g.status}]`;
+    if (g.priority) line += ` (${g.priority} priority)`;
+    if (g.description) line += `\n  ${g.description}`;
+    if (g.targetDate) line += `\n  Target: ${g.targetDate}`;
+    return line;
+  }).join('\n');
+
   const data = await client.put<{
-    goals: Array<{
-      id: string;
-      title: string;
-    }>;
-    updated: boolean;
-  }>('/api/v1/customers/goals', { goals: input.goals });
+    status: string;
+    message: string;
+  }>('/api/v1/customers/goals', { goalsAndAmbitions: markdown });
 
   return jsonResult(data);
 }
