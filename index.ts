@@ -161,7 +161,7 @@ export default {
     registerHouseholdTool(wrappedApi, client);
     registerProjectsTool(wrappedApi, client);
     registerPlanningTool(wrappedApi, client);
-    registerA2APairingTool(wrappedApi);
+    registerA2APairingTool(wrappedApi, baseUrl);
 
     api.logger.info('[myn] Registered 13 tools: tasks, briefing, calendar, habits, lists, search, timers, memory, profile, household, projects, planning, a2a_pairing');
   }

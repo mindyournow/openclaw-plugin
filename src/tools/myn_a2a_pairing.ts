@@ -19,15 +19,13 @@ export const MynA2APairingInputSchema = Type.Object({
     Type.Literal('send_message'),
     Type.Literal('get_agent_card'),
   ]),
-  /** Base URL of the MYN instance (e.g. https://api.mindyournow.com) */
-  mynBaseUrl: Type.String({ description: 'MYN API base URL' }),
   /** X-Agent-Key value for authenticated A2A requests (after pairing) */
   agentKey: Type.Optional(Type.String({ description: 'Agent key from redeem_invite response' })),
   // redeem_invite fields
   inviteCode: Type.Optional(Type.String({ description: 'Invite code from MYN Settings (e.g. ABC-12345)' })),
-  agentName: Type.Optional(Type.String()),
+  agentName: Type.Optional(Type.String({ description: 'Lowercase alphanumeric agent name (e.g. "openclaw")' })),
   displayName: Type.Optional(Type.String()),
-  outboundEndpoint: Type.Optional(Type.String({ description: 'HTTPS URL where MYN calls this agent' })),
+  outboundEndpoint: Type.Optional(Type.String({ description: 'HTTPS URL where MYN calls this agent (optional — use "none" if not available)' })),
   capabilities: Type.Optional(Type.Array(Type.Any(), { description: 'Capability objects for the manifest' })),
   // send_message fields
   intent: Type.Optional(Type.Union([Type.Literal('chat'), Type.Literal('briefing'), Type.Literal('ping')])),
@@ -48,14 +46,28 @@ interface OpenClawPluginApi {
   }): void;
 }
 
-export function registerA2APairingTool(api: OpenClawPluginApi): void {
+/**
+ * Register the A2A pairing tool with the plugin API.
+ * @param baseUrl - The MYN API base URL from plugin config (e.g. https://api.mindyournow.com)
+ */
+export function registerA2APairingTool(api: OpenClawPluginApi, baseUrl: string): void {
   api.registerTool({
     id: 'myn_a2a_pairing',
     name: 'MYN A2A Pairing',
-    description: 'Pair OpenClaw with MYN/Kaia via A2A protocol. Actions: redeem_invite, ping, send_message, get_agent_card.',
+    description: `Pair OpenClaw with MYN/Kaia via A2A protocol. The MYN API URL is already configured — do NOT guess or change it.
+
+IMPORTANT: If this tool returns an error, STOP IMMEDIATELY and report the error to the user. Do NOT retry with different URLs or parameters. Do NOT try to discover endpoints. The configuration is correct; errors mean something else is wrong.
+
+Actions:
+- redeem_invite: Redeem an invite code. Required: inviteCode, agentName. Optional: outboundEndpoint, displayName, capabilities.
+- ping: Ping MYN after pairing. Required: agentKey.
+- send_message: Send a message. Required: agentKey, message.
+- get_agent_card: Fetch MYN's agent card (no auth needed).
+
+For redeem_invite, use agentName "openclaw" and outboundEndpoint "none" if no public endpoint is available.`,
     inputSchema: MynA2APairingInputSchema,
     async execute(input: unknown) {
-      return myn_a2a_pairing(input as MynA2APairingInput);
+      return myn_a2a_pairing(input as MynA2APairingInput, baseUrl);
     }
   });
 }
@@ -72,8 +84,8 @@ async function a2aFetch(url: string, options: RequestInit): Promise<unknown> {
 /**
  * Execute a MYN A2A pairing action.
  */
-export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknown> {
-  const base = input.mynBaseUrl.replace(/\/$/, '');
+export async function myn_a2a_pairing(input: MynA2APairingInput, configuredBaseUrl?: string): Promise<unknown> {
+  const base = (configuredBaseUrl ?? 'https://api.mindyournow.com').replace(/\/$/, '');
   const caps = input.capabilities ?? [];
 
   try {
@@ -84,8 +96,8 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
       }
 
       case 'redeem_invite': {
-        if (!input.inviteCode || !input.agentName || !input.outboundEndpoint) {
-          return errorResult('inviteCode, agentName, and outboundEndpoint are required');
+        if (!input.inviteCode || !input.agentName) {
+          return errorResult('STOP: inviteCode and agentName are required. Do not retry — ask the user for the missing values.');
         }
 
         const manifest = {
@@ -99,7 +111,7 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
           inviteCode: input.inviteCode,
           agentName: input.agentName,
           displayName: input.displayName ?? input.agentName,
-          outboundEndpoint: input.outboundEndpoint,
+          outboundEndpoint: input.outboundEndpoint || 'none',
           capabilityHash,
           capabilityManifest: manifest,
         };
@@ -118,7 +130,7 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
       }
 
       case 'ping': {
-        if (!input.agentKey) return errorResult('agentKey is required for ping');
+        if (!input.agentKey) return errorResult('STOP: agentKey is required for ping. This comes from the redeem_invite response (mynInboundKey).');
         const pingData = await a2aFetch(`${base}/a2a/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Agent-Key': input.agentKey },
@@ -139,8 +151,8 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
       }
 
       case 'send_message': {
-        if (!input.agentKey) return errorResult('agentKey is required for send_message');
-        if (!input.message) return errorResult('message is required for send_message');
+        if (!input.agentKey) return errorResult('STOP: agentKey is required for send_message.');
+        if (!input.message) return errorResult('STOP: message is required for send_message.');
 
         const msgBody: Record<string, unknown> = {
           from: input.agentName ?? 'openclaw',
@@ -178,6 +190,6 @@ export async function myn_a2a_pairing(input: MynA2APairingInput): Promise<unknow
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return errorResult(`A2A request failed: ${msg}`);
+    return errorResult(`STOP: A2A request failed: ${msg}. Do NOT retry with different URLs — the API URL is pre-configured. Report this error to the user.`);
   }
 }
