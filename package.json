@@ -1,6 +1,6 @@
 {
   "name": "@mind-your-now/myn",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "OpenClaw plugin for Mind Your Now - AI-powered task and life management",
   "type": "module",
   "main": "dist/index.js",

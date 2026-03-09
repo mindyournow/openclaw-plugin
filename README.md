@@ -307,9 +307,9 @@ MIT © Mind Your Now
 
 ## Support
 
-- Documentation: https://docs.mindyournow.com
+- Email: support@mindyournow.com
 - Issues: https://github.com/mindyournow/openclaw-plugin/issues
-- Discord: https://discord.gg/mindyournow
+- Documentation: https://docs.mindyournow.com
 
 ---
 

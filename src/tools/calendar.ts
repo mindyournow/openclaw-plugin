@@ -73,14 +73,14 @@ async function listEvents(client: MynApiClient, input: CalendarInput) {
 
   if (input.startDate) params.append('start', input.startDate);
   if (input.endDate) params.append('end', input.endDate);
-  if (input.calendarId) params.append('calendarId', input.calendarId);
-  if (input.includeAllDay !== undefined) params.append('allDay', input.includeAllDay.toString());
   if (input.limit) params.append('limit', input.limit.toString());
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
   const data = await client.get<{
     events: unknown[];
-    calendars: unknown[];
+    total: number;
+    start: string;
+    end: string;
   }>(`/api/v2/calendar/events${queryString}`);
   return jsonResult(data);
 }
@@ -201,15 +201,34 @@ async function deleteEvent(client: MynApiClient, input: CalendarInput) {
 }
 
 async function getMeetings(client: MynApiClient, input: CalendarInput) {
+  // Use the events endpoint with date range, then filter to events with attendees (meetings)
   const params = new URLSearchParams();
 
-  if (input.includePast) params.append('includePast', 'true');
-  if (input.daysAhead) params.append('daysAhead', input.daysAhead.toString());
+  const now = new Date();
+  if (input.includePast) {
+    // Include today's past events
+    params.append('start', new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString());
+  } else {
+    params.append('start', now.toISOString());
+  }
+
+  const daysAhead = input.daysAhead ?? 7;
+  const endDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+  params.append('end', endDate.toISOString());
   if (input.limit) params.append('limit', input.limit.toString());
 
-  const queryString = params.toString() ? `?${params.toString()}` : '';
-  // No dedicated meetings list endpoint — use events endpoint
-  const data = await client.get<unknown>(`/api/v2/calendar/events${queryString}`);
+  const queryString = `?${params.toString()}`;
+  const data = await client.get<{
+    events: Array<{ attendees?: unknown[] }>;
+    total: number;
+  }>(`/api/v2/calendar/events${queryString}`);
+
+  // Filter to only events with attendees (actual meetings)
+  if (data && data.events) {
+    data.events = data.events.filter(e => e.attendees && Array.isArray(e.attendees) && e.attendees.length > 0);
+    data.total = data.events.length;
+  }
+
   return jsonResult(data);
 }
 

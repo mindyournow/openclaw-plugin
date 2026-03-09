@@ -26,5 +26,9 @@
   "uiHints": {
     "icon": "🎯",
     "color": "#6366F1"
+  },
+  "support": {
+    "email": "support@mindyournow.com",
+    "issues": "https://github.com/mindyournow/openclaw-plugin/issues"
   }
 }
