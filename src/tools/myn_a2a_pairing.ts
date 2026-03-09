@@ -37,6 +37,29 @@ export const MynA2APairingInputSchema = Type.Object({
 
 export type MynA2APairingInput = typeof MynA2APairingInputSchema.static;
 
+// OpenClaw plugin API interface (matches pattern from other tools)
+interface OpenClawPluginApi {
+  registerTool(tool: {
+    id: string;
+    name: string;
+    description: string;
+    inputSchema: unknown;
+    execute: (input: unknown) => Promise<unknown>;
+  }): void;
+}
+
+export function registerA2APairingTool(api: OpenClawPluginApi): void {
+  api.registerTool({
+    id: 'myn_a2a_pairing',
+    name: 'MYN A2A Pairing',
+    description: 'Pair OpenClaw with MYN/Kaia via A2A protocol. Actions: redeem_invite, ping, send_message, get_agent_card.',
+    inputSchema: MynA2APairingInputSchema,
+    async execute(input: unknown) {
+      return myn_a2a_pairing(input as MynA2APairingInput);
+    }
+  });
+}
+
 async function a2aFetch(url: string, options: RequestInit): Promise<unknown> {
   const response = await fetch(url, options);
   if (!response.ok) {
