@@ -55,7 +55,8 @@ export const TasksInputSchema = Type.Object({
   // Create specific
   id: Type.Optional(Type.String({ format: 'uuid' })), // Client-generated UUID
   recurrenceRule: Type.Optional(Type.String()), // For HABIT/CHORE types
-  isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system' })),
+  isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system. Use this field name, NOT autoScheduleEnabled.' })),
+  autoScheduleEnabled: Type.Optional(Type.Boolean({ description: 'DEPRECATED alias for isAutoScheduled. Prefer isAutoScheduled.' })),
   calendarId: Type.Optional(Type.String({ description: 'Calendar ID to link this task to (e.g. "primary" for default Google Calendar)' })),
   // Update specific
   updates: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
@@ -150,7 +151,9 @@ async function createTask(client: MynApiClient, input: TasksInput) {
   if (input.duration) body.duration = input.duration;
   if (input.projectId) body.projectId = input.projectId;
   if (input.recurrenceRule) body.recurrenceRule = input.recurrenceRule;
-  if (input.isAutoScheduled != null) body.isAutoScheduled = input.isAutoScheduled;
+  // Accept both field names — some models hallucinate "autoScheduleEnabled" instead of "isAutoScheduled"
+  const autoSched = input.isAutoScheduled ?? (input as Record<string, unknown>).autoScheduleEnabled;
+  if (autoSched != null) body.isAutoScheduled = autoSched;
   if (input.calendarId) body.calendarId = input.calendarId;
 
   // Validation: HABIT and CHORE must have recurrenceRule
