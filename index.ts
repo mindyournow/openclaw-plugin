@@ -2,7 +2,7 @@
  * Mind Your Now - OpenClaw Plugin
  * @mind-your-now/myn
  *
- * Main entry point that registers all 13 MYN tools with the OpenClaw agent.
+ * Main entry point that registers all 14 MYN tools with the OpenClaw agent.
  */
 
 import { MynApiClient } from './src/client.js';
@@ -19,6 +19,7 @@ import { registerHouseholdTool } from './src/tools/household.js';
 import { registerProjectsTool } from './src/tools/projects.js';
 import { registerPlanningTool } from './src/tools/planning.js';
 import { registerA2APairingTool } from './src/tools/myn_a2a_pairing.js';
+import { registerYnabTool } from './src/tools/ynab.js';
 
 export interface ToolDefinition {
   id: string;
@@ -162,8 +163,9 @@ export default {
     registerProjectsTool(wrappedApi, client);
     registerPlanningTool(wrappedApi, client);
     registerA2APairingTool(wrappedApi, baseUrl);
+    registerYnabTool(wrappedApi, client);
 
-    api.logger.info('[myn] Registered 13 tools: tasks, briefing, calendar, habits, lists, search, timers, memory, profile, household, projects, planning, a2a_pairing');
+    api.logger.info('[myn] Registered 14 tools: tasks, briefing, calendar, habits, lists, search, timers, memory, profile, household, projects, planning, a2a_pairing, ynab');
   }
 };
 
@@ -185,6 +187,7 @@ export { HouseholdInputSchema } from './src/tools/household.js';
 export { ProjectsInputSchema } from './src/tools/projects.js';
 export { PlanningInputSchema } from './src/tools/planning.js';
 export { MynA2APairingInputSchema } from './src/tools/myn_a2a_pairing.js';
+export { YnabInputSchema } from './src/tools/ynab.js';
 
 // Type-only exports
 export type { TasksInput } from './src/tools/tasks.js';
@@ -200,3 +203,4 @@ export type { HouseholdInput } from './src/tools/household.js';
 export type { ProjectsInput } from './src/tools/projects.js';
 export type { PlanningInput } from './src/tools/planning.js';
 export type { MynA2APairingInput } from './src/tools/myn_a2a_pairing.js';
+export type { YnabInput } from './src/tools/ynab.js';
