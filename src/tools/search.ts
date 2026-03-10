@@ -62,7 +62,7 @@ export async function executeSearch(
 
 async function performSearch(client: MynApiClient, input: SearchInput) {
   const params = new URLSearchParams();
-  params.append('query', input.query);
+  params.append('q', input.query);
 
   if (input.types && input.types.length > 0) {
     for (const t of input.types) {
