@@ -29,6 +29,45 @@ export const YnabInputSchema = Type.Object({
 
 export type YnabInput = typeof YnabInputSchema.static;
 
+/**
+ * Convert YNAB milliunits to formatted dollar string.
+ * YNAB API returns all monetary amounts in milliunits (÷1000 for dollars).
+ */
+function formatDollars(milliunits: number): string {
+  const dollars = milliunits / 1000;
+  const abs = Math.abs(dollars);
+  const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return dollars < 0 ? `-$${formatted}` : `$${formatted}`;
+}
+
+/** Known milliunit field names in YNAB API responses */
+const MILLIUNIT_FIELDS = new Set([
+  'readyToAssign', 'totalIncome', 'totalBudgeted', 'totalActivity',
+  'balance', 'budgeted', 'activity', 'clearedBalance', 'unclearedBalance',
+  'goalTarget', 'goalUnderFunded', 'goalOverFunded', 'goalOverallFunded', 'goalOverallLeft',
+  'amount', 'total', 'totalSpending'
+]);
+
+/**
+ * Recursively convert milliunit fields to dollar strings in API responses.
+ */
+function convertMilliunits(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(convertMilliunits);
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (MILLIUNIT_FIELDS.has(key) && typeof value === 'number') {
+        result[key] = formatDollars(value);
+      } else {
+        result[key] = convertMilliunits(value);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+
 export async function executeYnab(
   client: MynApiClient,
   input: YnabInput
@@ -60,7 +99,7 @@ export async function executeYnab(
 
 async function getBudgetOverview(client: MynApiClient) {
   const data = await client.get<unknown>('/api/v1/ynab/budget/overview');
-  return jsonResult(data);
+  return jsonResult(convertMilliunits(data));
 }
 
 async function getCategoryBalance(client: MynApiClient, input: YnabInput) {
@@ -70,12 +109,12 @@ async function getCategoryBalance(client: MynApiClient, input: YnabInput) {
   const data = await client.get<unknown>(
     `/api/v1/ynab/budget/categories/search?query=${encodeURIComponent(input.categoryName)}`
   );
-  return jsonResult(data);
+  return jsonResult(convertMilliunits(data));
 }
 
 async function getAccountBalances(client: MynApiClient) {
   const data = await client.get<unknown>('/api/v1/ynab/budget/accounts');
-  return jsonResult(data);
+  return jsonResult(convertMilliunits(data));
 }
 
 async function setCategoryGoal(client: MynApiClient, input: YnabInput) {
@@ -111,7 +150,7 @@ async function setCategoryGoal(client: MynApiClient, input: YnabInput) {
     `/api/v1/ynab/budget/categories/${searchResult.id}/goal`,
     body
   );
-  return jsonResult(data);
+  return jsonResult(convertMilliunits(data));
 }
 
 async function getSpendingInsights(client: MynApiClient, input: YnabInput) {
@@ -119,7 +158,7 @@ async function getSpendingInsights(client: MynApiClient, input: YnabInput) {
   const data = await client.get<unknown>(
     `/api/v1/ynab/analytics/spending?months=${months}`
   );
-  return jsonResult(data);
+  return jsonResult(convertMilliunits(data));
 }
 
 async function getUpcomingBills(client: MynApiClient, input: YnabInput) {
@@ -127,7 +166,7 @@ async function getUpcomingBills(client: MynApiClient, input: YnabInput) {
   const data = await client.get<unknown>(
     `/api/v1/ynab/scheduled?days=${days}`
   );
-  return jsonResult(data);
+  return jsonResult(convertMilliunits(data));
 }
 
 // Type for OpenClaw plugin API
