@@ -55,7 +55,7 @@ export const TasksInputSchema = Type.Object({
   // Create specific
   id: Type.Optional(Type.String({ format: 'uuid' })), // Client-generated UUID
   recurrenceRule: Type.Optional(Type.String()), // For HABIT/CHORE types
-  autoScheduleEnabled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system' })),
+  isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system' })),
   calendarId: Type.Optional(Type.String({ description: 'Calendar ID to link this task to (e.g. "primary" for default Google Calendar)' })),
   // Update specific
   updates: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
@@ -150,7 +150,7 @@ async function createTask(client: MynApiClient, input: TasksInput) {
   if (input.duration) body.duration = input.duration;
   if (input.projectId) body.projectId = input.projectId;
   if (input.recurrenceRule) body.recurrenceRule = input.recurrenceRule;
-  if (input.autoScheduleEnabled != null) body.autoScheduleEnabled = input.autoScheduleEnabled;
+  if (input.isAutoScheduled != null) body.isAutoScheduled = input.isAutoScheduled;
   if (input.calendarId) body.calendarId = input.calendarId;
 
   // Validation: HABIT and CHORE must have recurrenceRule
