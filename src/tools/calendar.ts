@@ -10,6 +10,7 @@ export const CalendarInputSchema = Type.Object({
   action: Type.Union([
     Type.Literal('list_events'),
     Type.Literal('create_event'),
+    Type.Literal('update_event'),
     Type.Literal('delete_event'),
     Type.Literal('meetings')
   ]),
@@ -34,8 +35,16 @@ export const CalendarInputSchema = Type.Object({
     method: Type.Union([Type.Literal('popup'), Type.Literal('email')])
   }))),
   timezone: Type.Optional(Type.String()), // e.g. "America/New_York"
-  // delete_event parameters
+  // update_event / delete_event parameters
   eventId: Type.Optional(Type.String()),
+  // update_event: fields to update (all optional, only provided fields are changed)
+  newTitle: Type.Optional(Type.String({ description: 'New title for the event' })),
+  newDescription: Type.Optional(Type.String({ description: 'New description for the event' })),
+  newLocation: Type.Optional(Type.String({ description: 'New location for the event' })),
+  newStartTime: Type.Optional(Type.String({ format: 'date-time', description: 'New start time (ISO 8601)' })),
+  newEndTime: Type.Optional(Type.String({ format: 'date-time', description: 'New end time (ISO 8601)' })),
+  newAttendees: Type.Optional(Type.Array(Type.String(), { description: 'Replace attendees list (email addresses or household member names)' })),
+  addAttendees: Type.Optional(Type.Array(Type.String(), { description: 'Add attendees to existing list (email addresses or household member names)' })),
   // meetings parameters
   includePast: Type.Optional(Type.Boolean({ default: false })),
   daysAhead: Type.Optional(Type.Number({ default: 7 }))
@@ -53,6 +62,8 @@ export async function executeCalendar(
         return await listEvents(client, input);
       case 'create_event':
         return await createEvent(client, input);
+      case 'update_event':
+        return await updateEvent(client, input);
       case 'delete_event':
         return await deleteEvent(client, input);
       case 'meetings':
@@ -191,6 +202,61 @@ async function createEvent(client: MynApiClient, input: CalendarInput) {
   return jsonResult(data);
 }
 
+async function updateEvent(client: MynApiClient, input: CalendarInput) {
+  if (!input.eventId) {
+    return errorResult('eventId is required for update_event action');
+  }
+
+  const updates: Record<string, unknown> = {};
+
+  if (input.newTitle) updates.title = input.newTitle;
+  if (input.newDescription) updates.description = input.newDescription;
+  if (input.newLocation) updates.location = input.newLocation;
+
+  if (input.newStartTime) {
+    const tz = input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    updates.start = { dateTime: input.newStartTime, timeZone: tz };
+  }
+  if (input.newEndTime) {
+    const tz = input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    updates.end = { dateTime: input.newEndTime, timeZone: tz };
+  }
+
+  // Handle attendees: newAttendees replaces, addAttendees appends
+  if (input.newAttendees && input.newAttendees.length > 0) {
+    const emails = await resolveAttendeesToEmails(client, input.newAttendees);
+    updates.attendees = emails.map(e => ({ email: e }));
+  } else if (input.addAttendees && input.addAttendees.length > 0) {
+    // For addAttendees, we need to get current attendees first, then merge
+    // Google Calendar PATCH with attendees replaces the whole list, so we
+    // fetch current event, merge, and send the full list
+    try {
+      const currentEvent = await client.get<{ attendees?: Array<{ email: string }> }>(
+        `/api/v2/calendar/events/${input.eventId}`
+      );
+      const existingEmails = currentEvent?.attendees?.map(a => a.email) ?? [];
+      const newEmails = await resolveAttendeesToEmails(client, input.addAttendees);
+      const allEmails = [...new Set([...existingEmails, ...newEmails])];
+      updates.attendees = allEmails.map(e => ({ email: e }));
+    } catch {
+      // If we can't fetch current event, just send the new attendees
+      const emails = await resolveAttendeesToEmails(client, input.addAttendees);
+      updates.attendees = emails.map(e => ({ email: e }));
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return errorResult('No update fields provided. Use newTitle, newDescription, newLocation, newStartTime, newEndTime, newAttendees, or addAttendees.');
+  }
+
+  const calendarId = input.calendarId ?? 'primary';
+  const data = await client.patch<unknown>(
+    `/api/v2/calendar/standalone-events/${input.eventId}?calendarId=${encodeURIComponent(calendarId)}`,
+    updates
+  );
+  return jsonResult({ updated: true, eventId: input.eventId, ...data as object });
+}
+
 async function deleteEvent(client: MynApiClient, input: CalendarInput) {
   if (!input.eventId) {
     return errorResult('eventId is required for delete_event action');
@@ -236,7 +302,7 @@ export function registerCalendarTool(api: OpenClawPluginApi, client: MynApiClien
   api.registerTool({
     id: 'myn_calendar',
     name: 'MYN Calendar',
-    description: 'Manage calendar events and meetings. Actions: list_events, create_event, delete_event, meetings. For create_event: startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00"). Attendees can be email addresses or household member first names.',
+    description: 'Manage calendar events and meetings. Actions: list_events, create_event, update_event, delete_event, meetings. For create_event: startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00"). For update_event: pass eventId and any fields to change (newTitle, newDescription, newLocation, newStartTime, newEndTime, addAttendees). Attendees can be email addresses or household member first names.',
     inputSchema: CalendarInputSchema,
     async execute(input: unknown) {
       return executeCalendar(client, input as CalendarInput);
