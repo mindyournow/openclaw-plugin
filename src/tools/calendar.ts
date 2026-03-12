@@ -79,6 +79,34 @@ export async function executeCalendar(
   }
 }
 
+/**
+ * Strip HTML descriptions from calendar events to reduce token bloat.
+ * Meeting invite bodies can be 10-50KB of HTML each, overwhelming LLM context.
+ */
+function stripEventDescriptions(events: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return events.map(event => {
+    const { description, ...rest } = event;
+    // Keep plain-text descriptions under 200 chars, drop HTML entirely
+    if (typeof description === 'string') {
+      if (description.includes('<') && description.includes('>')) {
+        // HTML body — extract text content or drop
+        const text = description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (text.length > 0 && text.length <= 200) {
+          return { ...rest, description: text };
+        }
+        // Too long or empty after stripping — omit
+        return rest;
+      }
+      // Plain text — truncate if long
+      if (description.length <= 200) {
+        return { ...rest, description };
+      }
+      return { ...rest, description: description.substring(0, 200) + '...' };
+    }
+    return rest;
+  });
+}
+
 async function listEvents(client: MynApiClient, input: CalendarInput) {
   const params = new URLSearchParams();
 
@@ -88,11 +116,17 @@ async function listEvents(client: MynApiClient, input: CalendarInput) {
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
   const data = await client.get<{
-    events: unknown[];
+    events: Array<Record<string, unknown>>;
     total: number;
     start: string;
     end: string;
   }>(`/api/v2/calendar/events${queryString}`);
+
+  // Strip HTML descriptions to prevent token bloat (330K+ chars → ~10K)
+  if (data?.events) {
+    data.events = stripEventDescriptions(data.events);
+  }
+
   return jsonResult(data);
 }
 
@@ -292,6 +326,7 @@ async function getMeetings(client: MynApiClient, input: CalendarInput) {
   // Filter to only events with attendees (actual meetings)
   if (data && data.events) {
     data.events = data.events.filter(e => e.attendees && Array.isArray(e.attendees) && e.attendees.length > 0);
+    data.events = stripEventDescriptions(data.events);
     data.total = data.events.length;
   }
 
