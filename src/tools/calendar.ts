@@ -83,21 +83,24 @@ export async function executeCalendar(
  * Strip HTML descriptions from calendar events to reduce token bloat.
  * Meeting invite bodies can be 10-50KB of HTML each, overwhelming LLM context.
  */
-function stripEventDescriptions(events: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+/**
+ * Slim down calendar events for LLM consumption.
+ * Strips HTML descriptions and removes verbose attendee lists.
+ * Keeps: id, title, startTime, endTime, location, provider, calendarName, allDay, status.
+ */
+function slimEvents(events: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   return events.map(event => {
-    const { description, ...rest } = event;
+    const { description, attendees, transparency, ...rest } = event;
+
     // Keep plain-text descriptions under 200 chars, drop HTML entirely
     if (typeof description === 'string') {
       if (description.includes('<') && description.includes('>')) {
-        // HTML body — extract text content or drop
         const text = description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         if (text.length > 0 && text.length <= 200) {
           return { ...rest, description: text };
         }
-        // Too long or empty after stripping — omit
         return rest;
       }
-      // Plain text — truncate if long
       if (description.length <= 200) {
         return { ...rest, description };
       }
@@ -111,7 +114,15 @@ async function listEvents(client: MynApiClient, input: CalendarInput) {
   const params = new URLSearchParams();
 
   if (input.startDate) params.append('start', input.startDate);
-  if (input.endDate) params.append('end', input.endDate);
+
+  // Compute end date: explicit endDate takes precedence, then daysAhead, then backend default (7d)
+  if (input.endDate) {
+    params.append('end', input.endDate);
+  } else if (input.daysAhead) {
+    const end = new Date(Date.now() + input.daysAhead * 24 * 60 * 60 * 1000);
+    params.append('end', end.toISOString());
+  }
+
   if (input.limit) params.append('limit', input.limit.toString());
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
@@ -124,7 +135,7 @@ async function listEvents(client: MynApiClient, input: CalendarInput) {
 
   // Strip HTML descriptions to prevent token bloat (330K+ chars → ~10K)
   if (data?.events) {
-    data.events = stripEventDescriptions(data.events);
+    data.events = slimEvents(data.events);
   }
 
   return jsonResult(data);
@@ -326,7 +337,7 @@ async function getMeetings(client: MynApiClient, input: CalendarInput) {
   // Filter to only events with attendees (actual meetings)
   if (data && data.events) {
     data.events = data.events.filter(e => e.attendees && Array.isArray(e.attendees) && e.attendees.length > 0);
-    data.events = stripEventDescriptions(data.events);
+    data.events = slimEvents(data.events);
     data.total = data.events.length;
   }
 
