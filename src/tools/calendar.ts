@@ -3,12 +3,55 @@
  */
 
 import { Type } from '@sinclair/typebox';
+import { createHash } from 'crypto';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult } from '../client.js';
+
+/**
+ * In-memory cache for full event details (description, attendees).
+ * Keyed by eventId, stores full detail + content hash for change detection.
+ * TTL: 10 minutes. Evicted on size limit (500 entries).
+ */
+interface CachedEventDetail {
+  data: Record<string, unknown>;
+  hash: string;
+  cachedAt: number;
+}
+const eventDetailCache = new Map<string, CachedEventDetail>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_MAX_SIZE = 500;
+
+function hashEventDetail(data: Record<string, unknown>): string {
+  return createHash('md5').update(JSON.stringify(data)).digest('hex');
+}
+
+function getCachedDetail(eventId: string): CachedEventDetail | undefined {
+  const cached = eventDetailCache.get(eventId);
+  if (!cached) return undefined;
+  if (Date.now() - cached.cachedAt > CACHE_TTL_MS) {
+    eventDetailCache.delete(eventId);
+    return undefined;
+  }
+  return cached;
+}
+
+function setCachedDetail(eventId: string, data: Record<string, unknown>): void {
+  // Evict oldest entries if at capacity
+  if (eventDetailCache.size >= CACHE_MAX_SIZE) {
+    const oldest = eventDetailCache.keys().next().value;
+    if (oldest) eventDetailCache.delete(oldest);
+  }
+  eventDetailCache.set(eventId, {
+    data,
+    hash: hashEventDetail(data),
+    cachedAt: Date.now(),
+  });
+}
 
 export const CalendarInputSchema = Type.Object({
   action: Type.Union([
     Type.Literal('list_events'),
+    Type.Literal('get_event'),
     Type.Literal('create_event'),
     Type.Literal('update_event'),
     Type.Literal('delete_event'),
@@ -60,6 +103,8 @@ export async function executeCalendar(
     switch (input.action) {
       case 'list_events':
         return await listEvents(client, input);
+      case 'get_event':
+        return await getEvent(client, input);
       case 'create_event':
         return await createEvent(client, input);
       case 'update_event':
@@ -92,19 +137,16 @@ function slimEvents(events: Array<Record<string, unknown>>): Array<Record<string
   return events.map(event => {
     const { description, attendees, transparency, ...rest } = event;
 
-    // Keep plain-text descriptions under 200 chars, drop HTML entirely
+    // Always truncate descriptions to 200 chars — never drop them entirely
     if (typeof description === 'string') {
-      if (description.includes('<') && description.includes('>')) {
-        const text = description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (text.length > 0 && text.length <= 200) {
-          return { ...rest, description: text };
-        }
-        return rest;
+      let text = description;
+      // Strip HTML tags first
+      if (text.includes('<') && text.includes('>')) {
+        text = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       }
-      if (description.length <= 200) {
-        return { ...rest, description };
-      }
-      return { ...rest, description: description.substring(0, 200) + '...' };
+      if (text.length === 0) return rest;
+      if (text.length <= 200) return { ...rest, description: text };
+      return { ...rest, description: text.substring(0, 200) + '...' };
     }
     return rest;
   });
@@ -139,6 +181,36 @@ async function listEvents(client: MynApiClient, input: CalendarInput) {
   }
 
   return jsonResult(data);
+}
+
+/**
+ * Get full details for a single event (description, attendees, etc.).
+ * Uses in-memory cache with hash-based change detection.
+ */
+async function getEvent(client: MynApiClient, input: CalendarInput) {
+  if (!input.eventId) {
+    return errorResult('eventId is required for get_event action');
+  }
+
+  // Check cache first
+  const cached = getCachedDetail(input.eventId);
+
+  const data = await client.get<Record<string, unknown>>(
+    `/api/v2/calendar/events/${input.eventId}`
+  );
+
+  if (!data) {
+    return errorResult(`Event not found: ${input.eventId}`);
+  }
+
+  // Cache the full detail
+  setCachedDetail(input.eventId, data);
+
+  // Check if changed since last fetch
+  const currentHash = hashEventDetail(data);
+  const changed = cached ? cached.hash !== currentHash : true;
+
+  return jsonResult({ ...data, _cached: !changed, _hash: currentHash });
 }
 
 /**
@@ -348,7 +420,7 @@ export function registerCalendarTool(api: OpenClawPluginApi, client: MynApiClien
   api.registerTool({
     id: 'myn_calendar',
     name: 'MYN Calendar',
-    description: 'Manage calendar events and meetings. Actions: list_events, create_event, update_event, delete_event, meetings. For create_event: startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00"). For update_event: pass eventId and any fields to change (newTitle, newDescription, newLocation, newStartTime, newEndTime, addAttendees). Attendees can be email addresses or household member first names.',
+    description: 'Manage calendar events and meetings. Actions: list_events, get_event, create_event, update_event, delete_event, meetings. list_events returns slim events (truncated descriptions, no attendees). Use get_event with eventId for full details (complete description, attendees, etc.). For create_event: startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00"). For update_event: pass eventId and any fields to change (newTitle, newDescription, newLocation, newStartTime, newEndTime, addAttendees). Attendees can be email addresses or household member first names.',
     inputSchema: CalendarInputSchema,
     async execute(input: unknown) {
       return executeCalendar(client, input as CalendarInput);
