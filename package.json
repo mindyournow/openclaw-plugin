@@ -1,6 +1,6 @@
 {
   "name": "@mind-your-now/myn",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "OpenClaw plugin for Mind Your Now - AI-powered task and life management",
   "type": "module",
   "main": "dist/index.js",
@@ -57,9 +57,6 @@
   "dependencies": {
     "@mind-your-now/skills": "^0.1.0",
     "@sinclair/typebox": "^0.34.0"
-  },
-  "peerDependencies": {
-    "openclaw": ">=2026.2.22"
   },
   "engines": {
     "node": ">=20.0.0"
