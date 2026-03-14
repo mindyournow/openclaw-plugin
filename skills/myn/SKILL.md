@@ -9,7 +9,7 @@ Use these OpenClaw tool names instead of raw REST calls:
 | OpenClaw Tool | Actions | REST Equivalent | Reference |
 |---------------|---------|-----------------|-----------|
 | `myn_tasks` | list, get, create, update, complete, archive, search | `/api/v2/unified-tasks` | [references/tasks-api.md](references/tasks-api.md) |
-| `myn_briefing` | status, generate, get, apply_correction, complete_session | `/api/v2/compass/*` | [references/briefing-api.md](references/briefing-api.md) |
+| `myn_debrief` | status, generate, get, apply_correction, complete_session | `/api/v2/debrief/*` | [references/debrief-api.md](references/debrief-api.md) |
 | `myn_calendar` | list_events, create_event, delete_event, meetings | `/api/v2/calendar/*` | [references/calendar-api.md](references/calendar-api.md) |
 | `myn_habits` | streaks, skip, chains, schedule, reminders | `/api/v1/habit-chains/*` | [references/habits-api.md](references/habits-api.md) |
 | `myn_lists` | get, add, toggle, bulk_add, convert_to_tasks | `/api/v1/households/*/grocery-list` | [references/lists-api.md](references/lists-api.md) |
@@ -38,10 +38,10 @@ Every `myn_tasks create` call needs: `id` (UUID), `title`, `taskType`, `priority
 
 ### Morning Routine
 
-1. `myn_briefing` action=status
-2. `myn_briefing` action=generate
+1. `myn_debrief` action=status
+2. `myn_debrief` action=generate
 3. Review and apply corrections
-4. `myn_briefing` action=complete_session
+4. `myn_debrief` action=complete_session
 
 ### Overload Handling
 

@@ -76,7 +76,7 @@ describe('Plugin Registration', () => {
   });
 
   describe('with apiKey', () => {
-    it('should register all 12 tools when apiKey is provided', async () => {
+    it('should register all 14 tools when apiKey is provided', async () => {
       const plugin = await import('../../index.js');
 
       mockApi.pluginConfig = {
@@ -89,9 +89,9 @@ describe('Plugin Registration', () => {
       expect(mockApi.logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Initializing Mind Your Now')
       );
-      expect(mockApi.registerTool).toHaveBeenCalledTimes(12);
+      expect(mockApi.registerTool).toHaveBeenCalledTimes(14);
       expect(mockApi.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Registered 12 tools')
+        expect.stringContaining('Registered 14 tools')
       );
     });
 
@@ -140,7 +140,7 @@ describe('Plugin Registration', () => {
       );
 
       expect(registeredIds).toContain('myn_tasks');
-      expect(registeredIds).toContain('myn_briefing');
+      expect(registeredIds).toContain('myn_debrief');
       expect(registeredIds).toContain('myn_calendar');
       expect(registeredIds).toContain('myn_habits');
       expect(registeredIds).toContain('myn_lists');

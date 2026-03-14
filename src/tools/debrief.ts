@@ -1,12 +1,12 @@
 /**
- * myn_briefing tool - Compass briefing generation and corrections
+ * myn_debrief tool - Daily Debrief generation and corrections
  */
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult } from '../client.js';
 
-export const BriefingInputSchema = Type.Object({
+export const DebriefInputSchema = Type.Object({
   action: Type.Union([
     Type.Literal('status'),
     Type.Literal('generate'),
@@ -18,7 +18,7 @@ export const BriefingInputSchema = Type.Object({
   context: Type.Optional(Type.String({ description: 'Additional context for briefing generation' })),
   focusAreas: Type.Optional(Type.Array(Type.String())),
   // get parameters
-  briefingId: Type.Optional(Type.String({ format: 'uuid' })),
+  debriefId: Type.Optional(Type.String({ format: 'uuid' })),
   // apply_correction parameters
   correctionId: Type.Optional(Type.String({ format: 'uuid' })),
   correctionType: Type.Optional(Type.Union([
@@ -36,20 +36,20 @@ export const BriefingInputSchema = Type.Object({
   decisions: Type.Optional(Type.Array(Type.String()))
 });
 
-export type BriefingInput = typeof BriefingInputSchema.static;
+export type DebriefInput = typeof DebriefInputSchema.static;
 
-export async function executeBriefing(
+export async function executeDebrief(
   client: MynApiClient,
-  input: BriefingInput
+  input: DebriefInput
 ): Promise<{ success: true; data: unknown } | { success: false; error: string; details?: unknown }> {
   try {
     switch (input.action) {
       case 'status':
-        return await getBriefingStatus(client);
+        return await getDebriefStatus(client);
       case 'generate':
-        return await generateBriefing(client, input);
+        return await generateDebrief(client, input);
       case 'get':
-        return await getBriefing(client, input);
+        return await getDebrief(client, input);
       case 'apply_correction':
         return await applyCorrection(client, input);
       case 'complete_session':
@@ -65,25 +65,25 @@ export async function executeBriefing(
   }
 }
 
-async function getBriefingStatus(client: MynApiClient) {
+async function getDebriefStatus(client: MynApiClient) {
   const data = await client.get<{
     hasActiveSession: boolean;
     sessionId?: string;
-    lastBriefingId?: string;
-    lastBriefingTime?: string;
+    lastDebriefId?: string;
+    lastDebriefTime?: string;
     pendingCorrections: number;
-  }>('/api/v2/compass/status');
+  }>('/api/v2/debrief/status');
   return jsonResult(data);
 }
 
-async function generateBriefing(client: MynApiClient, input: BriefingInput) {
+async function generateDebrief(client: MynApiClient, input: DebriefInput) {
   const body: Record<string, unknown> = {};
 
   if (input.context) body.context = input.context;
   if (input.focusAreas && input.focusAreas.length > 0) body.focusAreas = input.focusAreas;
 
   const data = await client.post<{
-    briefingId: string;
+    debriefId: string;
     sessionId: string;
     summary: string;
     criticalNow: unknown[];
@@ -93,23 +93,23 @@ async function generateBriefing(client: MynApiClient, input: BriefingInput) {
     habitsDue: unknown[];
     suggestions: string[];
     createdAt: string;
-  }>('/api/v2/compass/generate', body);
+  }>('/api/v2/debrief/generate', body);
   return jsonResult(data);
 }
 
-async function getBriefing(client: MynApiClient, input: BriefingInput) {
-  if (!input.briefingId) {
-    // Get the latest briefing if no ID provided
-    const data = await client.get<unknown>('/api/v2/compass/current');
+async function getDebrief(client: MynApiClient, input: DebriefInput) {
+  if (!input.debriefId) {
+    // Get the latest debrief if no ID provided
+    const data = await client.get<unknown>('/api/v2/debrief/current');
     return jsonResult(data);
   }
 
-  // No per-ID endpoint exists; use /current for the active briefing or /history for past ones
-  const data = await client.get<unknown>('/api/v2/compass/current');
+  // No per-ID endpoint exists; use /current for the active debrief or /history for past ones
+  const data = await client.get<unknown>('/api/v2/debrief/current');
   return jsonResult(data);
 }
 
-async function applyCorrection(client: MynApiClient, input: BriefingInput) {
+async function applyCorrection(client: MynApiClient, input: DebriefInput) {
   if (!input.correctionType) {
     return errorResult('correctionType is required for apply_correction action');
   }
@@ -124,12 +124,12 @@ async function applyCorrection(client: MynApiClient, input: BriefingInput) {
   const data = await client.post<{
     correctionId: string;
     appliedAt: string;
-    briefingUpdated: boolean;
-  }>('/api/v2/compass/corrections/apply', body);
+    debriefUpdated: boolean;
+  }>('/api/v2/debrief/corrections/apply', body);
   return jsonResult(data);
 }
 
-async function completeSession(client: MynApiClient, input: BriefingInput) {
+async function completeSession(client: MynApiClient, input: DebriefInput) {
   const body: Record<string, unknown> = {};
 
   if (input.sessionSummary) body.summary = input.sessionSummary;
@@ -140,18 +140,18 @@ async function completeSession(client: MynApiClient, input: BriefingInput) {
     completedAt: string;
     nextSessionRecommended?: string;
     followUps: unknown[];
-  }>('/api/v2/compass/complete', body);
+  }>('/api/v2/debrief/complete', body);
   return jsonResult(data);
 }
 
-export function registerBriefingTool(api: OpenClawPluginApi, client: MynApiClient): void {
+export function registerDebriefTool(api: OpenClawPluginApi, client: MynApiClient): void {
   api.registerTool({
-    id: 'myn_briefing',
-    name: 'MYN Briefing',
-    description: 'Generate and manage Compass briefings. Actions: status, generate, get, apply_correction, complete_session.',
-    inputSchema: BriefingInputSchema,
+    id: 'myn_debrief',
+    name: 'MYN Daily Debrief',
+    description: 'Generate and manage Daily Debrief sessions. Actions: status, generate, get, apply_correction, complete_session.',
+    inputSchema: DebriefInputSchema,
     async execute(input: unknown) {
-      return executeBriefing(client, input as BriefingInput);
+      return executeDebrief(client, input as DebriefInput);
     }
   });
 }
