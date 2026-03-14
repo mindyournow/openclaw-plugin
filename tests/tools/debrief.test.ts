@@ -42,7 +42,7 @@ describe('myn_debrief', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'brief-123',
+          debriefId: 'brief-123',
           sessionId: 'session-456',
           summary: 'Your morning briefing',
           criticalNow: [],
@@ -63,7 +63,7 @@ describe('myn_debrief', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('briefingId');
+        expect(result.data).toHaveProperty('debriefId');
         expect(result.data).toHaveProperty('criticalNow');
       }
     });
@@ -73,7 +73,7 @@ describe('myn_debrief', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'brief-123',
+          debriefId: 'brief-123',
           sessionId: 'session-456',
           summary: 'Briefing',
           criticalNow: [],
@@ -98,7 +98,7 @@ describe('myn_debrief', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'latest',
+          debriefId: 'latest',
           summary: 'Latest briefing'
         })
       });
@@ -113,14 +113,14 @@ describe('myn_debrief', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'specific-id',
+          debriefId: 'specific-id',
           summary: 'Specific briefing'
         })
       });
 
       const result = await executeDebrief(client, {
         action: 'get',
-        briefingId: '550e8400-e29b-41d4-a716-446655440000'
+        debriefId: '550e8400-e29b-41d4-a716-446655440000'
       });
 
       expect(result.success).toBe(true);

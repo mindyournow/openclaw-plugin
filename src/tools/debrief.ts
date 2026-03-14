@@ -18,7 +18,7 @@ export const DebriefInputSchema = Type.Object({
   context: Type.Optional(Type.String({ description: 'Additional context for briefing generation' })),
   focusAreas: Type.Optional(Type.Array(Type.String())),
   // get parameters
-  briefingId: Type.Optional(Type.String({ format: 'uuid' })),
+  debriefId: Type.Optional(Type.String({ format: 'uuid' })),
   // apply_correction parameters
   correctionId: Type.Optional(Type.String({ format: 'uuid' })),
   correctionType: Type.Optional(Type.Union([
@@ -98,7 +98,7 @@ async function generateDebrief(client: MynApiClient, input: DebriefInput) {
 }
 
 async function getDebrief(client: MynApiClient, input: DebriefInput) {
-  if (!input.briefingId) {
+  if (!input.debriefId) {
     // Get the latest debrief if no ID provided
     const data = await client.get<unknown>('/api/v2/debrief/current');
     return jsonResult(data);
