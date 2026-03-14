@@ -3,7 +3,7 @@
  *
  * Full coverage of MYN backend YNAB endpoints:
  * - Budget: overview, categories, accounts, months, payees, goals
- * - Transactions: create, create_bulk, list
+ * - Transactions: create, create_bulk, list, update, delete
  * - Scheduled: list, create, update, delete, subscriptions view
  * - Analytics: spending, payees, trends, net worth, debt
  * - Connection: status check
@@ -28,6 +28,8 @@ export const YnabInputSchema = Type.Object({
     Type.Literal('create_transaction'),
     Type.Literal('create_transactions_bulk'),
     Type.Literal('list_transactions'),
+    Type.Literal('update_transaction'),
+    Type.Literal('delete_transaction'),
     // Scheduled transactions & subscriptions
     Type.Literal('scheduled_transactions'),
     Type.Literal('create_scheduled_transaction'),
@@ -61,7 +63,9 @@ export const YnabInputSchema = Type.Object({
   goalTargetMonth: Type.Optional(Type.String({ description: 'Target month YYYY-MM (e.g., 2026-06). Required for TBD goals.' })),
 
   // Scheduled transaction parameters
-  transactionId: Type.Optional(Type.String({ description: 'Scheduled transaction ID. Required for update/delete_scheduled_transaction.' })),
+  transactionId: Type.Optional(Type.String({ description: 'Transaction ID. Required for update/delete_transaction and update/delete_scheduled_transaction.' })),
+  cleared: Type.Optional(Type.String({ description: 'Cleared status: "cleared", "uncleared", or "reconciled". Used by update_transaction.' })),
+  flagColor: Type.Optional(Type.String({ description: 'Flag color: red, orange, yellow, green, blue, purple. Used by update_transaction.' })),
   frequency: Type.Optional(Type.String({ description: 'Recurrence frequency: never, daily, weekly, everyOtherWeek, twiceAMonth, every4Weeks, monthly, everyOtherMonth, every3Months, every4Months, twiceAYear, yearly, everyOtherYear.' })),
   dateFirst: Type.Optional(Type.String({ description: 'First occurrence date YYYY-MM-DD for create_scheduled_transaction.' })),
 
@@ -165,6 +169,10 @@ export async function executeYnab(
         return await createTransactionsBulk(client, input);
       case 'list_transactions':
         return await listTransactions(client, input);
+      case 'update_transaction':
+        return await updateTransaction(client, input);
+      case 'delete_transaction':
+        return await deleteTransactionAction(client, input);
 
       // Scheduled transactions & subscriptions
       case 'scheduled_transactions':
@@ -341,6 +349,40 @@ async function listTransactions(client: MynApiClient, input: YnabInput) {
   return jsonResult(convertMilliunits(data));
 }
 
+async function updateTransaction(client: MynApiClient, input: YnabInput) {
+  if (!input.transactionId) {
+    return errorResult('transactionId is required for update_transaction.');
+  }
+
+  const body: Record<string, unknown> = {};
+  if (input.accountId) body.accountId = input.accountId;
+  if (input.payeeName) body.payeeName = input.payeeName;
+  if (input.amount != null) body.amountMilliunits = Math.round(input.amount * 1000);
+  if (input.date) body.date = input.date;
+  if (input.memo) body.memo = input.memo;
+  if (input.cleared) body.cleared = input.cleared;
+  if (input.flagColor) body.flagColor = input.flagColor;
+
+  if (input.categoryName) {
+    const categoryId = await resolveCategoryId(client, input.categoryName);
+    if (!categoryId) {
+      return errorResult(`Category '${input.categoryName}' not found.`);
+    }
+    body.categoryId = categoryId;
+  }
+
+  const data = await client.put<unknown>(`/api/v1/ynab/transactions/${input.transactionId}`, body);
+  return jsonResult(convertMilliunits(data));
+}
+
+async function deleteTransactionAction(client: MynApiClient, input: YnabInput) {
+  if (!input.transactionId) {
+    return errorResult('transactionId is required for delete_transaction.');
+  }
+  const data = await client.delete<unknown>(`/api/v1/ynab/transactions/${input.transactionId}`);
+  return jsonResult(convertMilliunits(data));
+}
+
 async function createScheduledTransaction(client: MynApiClient, input: YnabInput) {
   if (!input.accountId) {
     return errorResult('accountId is required for create_scheduled_transaction.');
@@ -435,7 +477,7 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
     description: [
       'YNAB budget management with full read/write access.',
       'Budget: budget_overview, category_balance, list_categories, account_balances, set_category_goal, goal_progress, budget_months, search_payees.',
-      'Transactions: create_transaction, create_transactions_bulk, list_transactions.',
+      'Transactions: create_transaction, create_transactions_bulk, list_transactions, update_transaction, delete_transaction.',
       'Scheduled: scheduled_transactions, create_scheduled_transaction, update_scheduled_transaction, delete_scheduled_transaction, subscriptions, upcoming_bills.',
       'Analytics: spending_insights, payee_analysis, spending_trends, net_worth, debt_tracking.',
       'Connection: connection_status.',
