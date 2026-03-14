@@ -140,7 +140,7 @@ describe('Plugin Registration', () => {
       );
 
       expect(registeredIds).toContain('myn_tasks');
-      expect(registeredIds).toContain('myn_briefing');
+      expect(registeredIds).toContain('myn_debrief');
       expect(registeredIds).toContain('myn_calendar');
       expect(registeredIds).toContain('myn_habits');
       expect(registeredIds).toContain('myn_lists');

@@ -1,12 +1,12 @@
 /**
- * Tests for myn_briefing tool
+ * Tests for myn_debrief tool
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeBriefing } from '../../src/tools/briefing.js';
+import { executeDebrief } from '../../src/tools/debrief.js';
 import { MynApiClient } from '../../src/client.js';
 
-describe('myn_briefing', () => {
+describe('myn_debrief', () => {
   const mockFetch = vi.fn();
   let client: MynApiClient;
 
@@ -27,7 +27,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, { action: 'status' });
+      const result = await executeDebrief(client, { action: 'status' });
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -55,7 +55,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'generate',
         context: 'Morning planning session',
         focusAreas: ['work', 'health']
@@ -86,7 +86,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, { action: 'generate' });
+      const result = await executeDebrief(client, { action: 'generate' });
 
       expect(result.success).toBe(true);
     });
@@ -103,7 +103,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, { action: 'get' });
+      const result = await executeDebrief(client, { action: 'get' });
 
       expect(result.success).toBe(true);
     });
@@ -118,7 +118,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'get',
         briefingId: '550e8400-e29b-41d4-a716-446655440000'
       });
@@ -139,7 +139,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'apply_correction',
         correctionType: 'TASK_COMPLETED',
         correctionData: { taskId: 'task-123' },
@@ -150,7 +150,7 @@ describe('myn_briefing', () => {
     });
 
     it('should return error if correctionType missing', async () => {
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'apply_correction',
         correctionData: { taskId: 'task-123' }
       });
@@ -171,7 +171,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'complete_session',
         sessionSummary: 'Planned the day successfully',
         decisions: ['Focus on project X', 'Defer meeting Y']
