@@ -60,7 +60,7 @@ export const YnabInputSchema = Type.Object({
   accountId: Type.Optional(Type.String({ description: 'YNAB account ID (source account). Use account_balances to find IDs.' })),
   payeeName: Type.Optional(Type.String({ description: 'Payee name. Used by create_transaction, create_transactions_bulk, search_payees, create_scheduled_transaction.' })),
   payeeId: Type.Optional(Type.String({ description: 'Payee ID. For transfers: use the transferPayeeId of the target account (from account_balances). Takes precedence over payeeName.' })),
-  transferToAccount: Type.Optional(Type.String({ description: 'Target account name for transfers (fuzzy match). Creates a proper YNAB transfer by resolving to the account\'s transferPayeeId. Use with create_transaction instead of payeeName.' })),
+  transferToAccount: Type.Optional(Type.String({ description: 'Target account name for transfers (fuzzy match). Creates a proper YNAB transfer by resolving to the account\'s transferPayeeId. Works with both create_transaction and update_transaction. IMPORTANT: When converting an existing transaction to a transfer, YNAB creates the matching transaction in the destination account as "uncleared" even if the source is cleared. You may need to clear the destination side separately via update_transaction.' })),
   amount: Type.Optional(Type.Number({ description: 'Amount in dollars. Negative for expenses (e.g., -45.50), positive for income.' })),
   date: Type.Optional(Type.String({ description: 'Date in YYYY-MM-DD format. Defaults to today for transactions. Used as sinceDate filter for list_transactions.' })),
   memo: Type.Optional(Type.String({ description: 'Optional memo/note.' })),
