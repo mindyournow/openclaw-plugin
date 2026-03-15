@@ -430,15 +430,38 @@ async function splitTransaction(client: MynApiClient, input: YnabInput) {
     return errorResult('splits array with at least 2 entries is required for split_transaction. Each entry needs categoryName and amount.');
   }
 
+  // Convert split amounts to milliunits
+  const splitMilliunits = input.splits.map(s => Math.round(s.amount * 1000));
+  const splitSum = splitMilliunits.reduce((a, b) => a + b, 0);
+
+  // Fetch original transaction to validate amounts sum correctly
+  const transactions = await client.get<{ transactions: Array<{ id: string; amount: number }> }>(
+    `/api/v1/ynab/transactions?sinceDate=${new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}`
+  );
+  const original = transactions?.transactions?.find(t => t.id === input.transactionId);
+  if (original) {
+    const originalAmount = original.amount; // already in milliunits from API
+    if (splitSum !== originalAmount) {
+      const splitDollars = (splitSum / 1000).toFixed(2);
+      const originalDollars = (originalAmount / 1000).toFixed(2);
+      return errorResult(
+        `Split amounts must sum to the original transaction amount. ` +
+        `Splits sum to $${splitDollars} but original is $${originalDollars}. ` +
+        `Adjust the split amounts so they add up exactly.`
+      );
+    }
+  }
+
   // Resolve category IDs for all splits
   const subtransactions: Array<{ amount: number; categoryId: string; memo?: string }> = [];
-  for (const split of input.splits) {
+  for (let i = 0; i < input.splits.length; i++) {
+    const split = input.splits[i];
     const categoryId = await resolveCategoryId(client, split.categoryName);
     if (!categoryId) {
       return errorResult(`Category '${split.categoryName}' not found. Use list_categories to browse.`);
     }
     subtransactions.push({
-      amount: Math.round(split.amount * 1000),
+      amount: splitMilliunits[i],
       categoryId,
       memo: split.memo
     });
