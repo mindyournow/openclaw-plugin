@@ -56,7 +56,7 @@ export const YnabInputSchema = Type.Object({
   ]),
 
   // Shared parameters
-  categoryName: Type.Optional(Type.String({ description: 'Category name (fuzzy match). Used by category_balance, set_category_goal, create_transaction, create_transactions_bulk.' })),
+  categoryName: Type.Optional(Type.String({ description: 'Category name. For create_category: the new category name. For other actions (category_balance, set_category_goal, create_transaction, rename_category, move_category, split_transaction): fuzzy-matched against existing categories.' })),
   accountId: Type.Optional(Type.String({ description: 'YNAB account ID. Use account_balances to find IDs.' })),
   payeeName: Type.Optional(Type.String({ description: 'Payee name. Used by create_transaction, create_transactions_bulk, search_payees, create_scheduled_transaction.' })),
   amount: Type.Optional(Type.Number({ description: 'Amount in dollars. Negative for expenses (e.g., -45.50), positive for income.' })),
@@ -81,11 +81,11 @@ export const YnabInputSchema = Type.Object({
   dateFirst: Type.Optional(Type.String({ description: 'First occurrence date YYYY-MM-DD for create_scheduled_transaction.' })),
 
   // Category management parameters
-  groupName: Type.Optional(Type.String({ description: 'Category group name. Used by create_category_group, create_category (to find group), rename_category_group.' })),
-  newName: Type.Optional(Type.String({ description: 'New name for rename_category, rename_category_group.' })),
-  targetGroupName: Type.Optional(Type.String({ description: 'Target category group name for move_category (fuzzy match).' })),
+  groupName: Type.Optional(Type.String({ description: 'Category group name. For create_category_group: the new group name to create. For create_category: the group to add the category to (fuzzy match). For rename_category_group: the current group name (fuzzy match).' })),
+  newName: Type.Optional(Type.String({ description: 'New name. Required by rename_category and rename_category_group.' })),
+  targetGroupName: Type.Optional(Type.String({ description: 'Destination category group name for move_category (fuzzy match).' })),
   note: Type.Optional(Type.String({ description: 'Optional note for create_category.' })),
-  categoryGroupId: Type.Optional(Type.String({ description: 'Category group ID. Used internally; prefer groupName for fuzzy matching.' })),
+  categoryGroupId: Type.Optional(Type.String({ description: 'Category group ID (alternative to groupName). Use list_categories to find IDs.' })),
 
   // Split transaction parameters
   splits: Type.Optional(Type.Array(
