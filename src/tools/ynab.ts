@@ -20,6 +20,7 @@ export const YnabInputSchema = Type.Object({
     Type.Literal('category_balance'),
     Type.Literal('list_categories'),
     Type.Literal('account_balances'),
+    Type.Literal('set_budget_amount'),
     Type.Literal('set_category_goal'),
     Type.Literal('goal_progress'),
     Type.Literal('budget_months'),
@@ -44,6 +45,7 @@ export const YnabInputSchema = Type.Object({
     Type.Literal('net_worth'),
     Type.Literal('debt_tracking'),
     // Connection
+    Type.Literal('split_transaction'),
     Type.Literal('connection_status')
   ]),
 
@@ -57,6 +59,9 @@ export const YnabInputSchema = Type.Object({
   months: Type.Optional(Type.Number({ description: 'Number of months for analytics (default: 3 for spending, 6 for trends).' })),
   days: Type.Optional(Type.Number({ description: 'Number of days to look ahead for upcoming_bills (default: 7).' })),
 
+  // Budget allocation parameters
+  month: Type.Optional(Type.String({ description: 'Budget month in YYYY-MM format (e.g., 2026-03). Defaults to current month. Used by set_budget_amount.' })),
+
   // Goal parameters
   goalType: Type.Optional(Type.String({ description: 'Goal type: TB (Target Balance), TBD (Target Balance by Date), MF (Monthly Funding), NEED (Plan Your Spending).' })),
   goalTargetDollars: Type.Optional(Type.Number({ description: 'Goal target in dollars (e.g., 500.00).' })),
@@ -68,6 +73,16 @@ export const YnabInputSchema = Type.Object({
   flagColor: Type.Optional(Type.String({ description: 'Flag color: red, orange, yellow, green, blue, purple. Used by update_transaction.' })),
   frequency: Type.Optional(Type.String({ description: 'Recurrence frequency: never, daily, weekly, everyOtherWeek, twiceAMonth, every4Weeks, monthly, everyOtherMonth, every3Months, every4Months, twiceAYear, yearly, everyOtherYear.' })),
   dateFirst: Type.Optional(Type.String({ description: 'First occurrence date YYYY-MM-DD for create_scheduled_transaction.' })),
+
+  // Split transaction parameters
+  splits: Type.Optional(Type.Array(
+    Type.Object({
+      categoryName: Type.String({ description: 'Category name (fuzzy match).' }),
+      amount: Type.Number({ description: 'Amount in dollars for this split. Negative for expenses.' }),
+      memo: Type.Optional(Type.String({ description: 'Optional memo for this split.' }))
+    }),
+    { description: 'Array of category splits for split_transaction. Amounts must sum to the original transaction amount.' }
+  )),
 
   // Bulk transaction parameters
   transactions: Type.Optional(Type.Array(
@@ -153,6 +168,8 @@ export async function executeYnab(
         return jsonResult(convertMilliunits(await client.get('/api/v1/ynab/budget/categories')));
       case 'account_balances':
         return jsonResult(convertMilliunits(await client.get('/api/v1/ynab/budget/accounts')));
+      case 'set_budget_amount':
+        return await setBudgetAmount(client, input);
       case 'set_category_goal':
         return await setCategoryGoal(client, input);
       case 'goal_progress':
@@ -173,6 +190,8 @@ export async function executeYnab(
         return await updateTransaction(client, input);
       case 'delete_transaction':
         return await deleteTransactionAction(client, input);
+      case 'split_transaction':
+        return await splitTransaction(client, input);
 
       // Scheduled transactions & subscriptions
       case 'scheduled_transactions':
@@ -232,6 +251,26 @@ async function getCategoryBalance(client: MynApiClient, input: YnabInput) {
   const data = await client.get<unknown>(
     `/api/v1/ynab/budget/categories/search?query=${encodeURIComponent(input.categoryName)}`
   );
+  return jsonResult(convertMilliunits(data));
+}
+
+async function setBudgetAmount(client: MynApiClient, input: YnabInput) {
+  if (!input.categoryName) {
+    return errorResult('categoryName is required for set_budget_amount action');
+  }
+  if (input.amount == null) {
+    return errorResult('amount is required for set_budget_amount (in dollars, e.g., 200 to budget $200)');
+  }
+
+  const categoryId = await resolveCategoryId(client, input.categoryName);
+  if (!categoryId) {
+    return errorResult(`Category '${input.categoryName}' not found`);
+  }
+
+  const body: Record<string, unknown> = { budgetedDollars: input.amount };
+  if (input.month) body.month = input.month;
+
+  const data = await client.patch<unknown>(`/api/v1/ynab/budget/categories/${categoryId}/budget`, body);
   return jsonResult(convertMilliunits(data));
 }
 
@@ -383,6 +422,44 @@ async function deleteTransactionAction(client: MynApiClient, input: YnabInput) {
   return jsonResult(convertMilliunits(data));
 }
 
+async function splitTransaction(client: MynApiClient, input: YnabInput) {
+  if (!input.transactionId) {
+    return errorResult('transactionId is required for split_transaction. Use list_transactions to find the transaction.');
+  }
+  if (!input.splits || input.splits.length < 2) {
+    return errorResult('splits array with at least 2 entries is required for split_transaction. Each entry needs categoryName and amount.');
+  }
+
+  // Resolve category IDs for all splits
+  const subtransactions: Array<{ amount: number; categoryId: string; memo?: string }> = [];
+  for (const split of input.splits) {
+    const categoryId = await resolveCategoryId(client, split.categoryName);
+    if (!categoryId) {
+      return errorResult(`Category '${split.categoryName}' not found. Use list_categories to browse.`);
+    }
+    subtransactions.push({
+      amount: Math.round(split.amount * 1000),
+      categoryId,
+      memo: split.memo
+    });
+  }
+
+  // Update the transaction with subtransactions — YNAB handles the split natively
+  const body: Record<string, unknown> = {
+    subtransactions: subtransactions.map(sub => {
+      const entry: Record<string, unknown> = {
+        amount: sub.amount,
+        categoryId: sub.categoryId
+      };
+      if (sub.memo) entry.memo = sub.memo;
+      return entry;
+    })
+  };
+
+  const data = await client.put<unknown>(`/api/v1/ynab/transactions/${input.transactionId}`, body);
+  return jsonResult(convertMilliunits(data));
+}
+
 async function createScheduledTransaction(client: MynApiClient, input: YnabInput) {
   if (!input.accountId) {
     return errorResult('accountId is required for create_scheduled_transaction.');
@@ -476,8 +553,9 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
     name: 'MYN YNAB',
     description: [
       'YNAB budget management with full read/write access.',
-      'Budget: budget_overview, category_balance, list_categories, account_balances, set_category_goal, goal_progress, budget_months, search_payees.',
-      'Transactions: create_transaction, create_transactions_bulk, list_transactions, update_transaction, delete_transaction.',
+      'Budget: budget_overview, category_balance, list_categories, account_balances, set_budget_amount, set_category_goal, goal_progress, budget_months, search_payees.',
+      'Transactions: create_transaction, create_transactions_bulk, list_transactions, update_transaction, delete_transaction, split_transaction.',
+      'Split: split_transaction takes a transactionId and splits array (each with categoryName and amount in dollars). Use this to split an Amazon order or any transaction across multiple budget categories.',
       'Scheduled: scheduled_transactions, create_scheduled_transaction, update_scheduled_transaction, delete_scheduled_transaction, subscriptions, upcoming_bills.',
       'Analytics: spending_insights, payee_analysis, spending_trends, net_worth, debt_tracking.',
       'Connection: connection_status.',
