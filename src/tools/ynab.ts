@@ -46,6 +46,12 @@ export const YnabInputSchema = Type.Object({
     Type.Literal('debt_tracking'),
     // Connection
     Type.Literal('split_transaction'),
+    // Category management
+    Type.Literal('create_category_group'),
+    Type.Literal('create_category'),
+    Type.Literal('rename_category'),
+    Type.Literal('move_category'),
+    Type.Literal('rename_category_group'),
     Type.Literal('connection_status')
   ]),
 
@@ -73,6 +79,13 @@ export const YnabInputSchema = Type.Object({
   flagColor: Type.Optional(Type.String({ description: 'Flag color: red, orange, yellow, green, blue, purple. Used by update_transaction.' })),
   frequency: Type.Optional(Type.String({ description: 'Recurrence frequency: never, daily, weekly, everyOtherWeek, twiceAMonth, every4Weeks, monthly, everyOtherMonth, every3Months, every4Months, twiceAYear, yearly, everyOtherYear.' })),
   dateFirst: Type.Optional(Type.String({ description: 'First occurrence date YYYY-MM-DD for create_scheduled_transaction.' })),
+
+  // Category management parameters
+  groupName: Type.Optional(Type.String({ description: 'Category group name. Used by create_category_group, create_category (to find group), rename_category_group.' })),
+  newName: Type.Optional(Type.String({ description: 'New name for rename_category, rename_category_group.' })),
+  targetGroupName: Type.Optional(Type.String({ description: 'Target category group name for move_category (fuzzy match).' })),
+  note: Type.Optional(Type.String({ description: 'Optional note for create_category.' })),
+  categoryGroupId: Type.Optional(Type.String({ description: 'Category group ID. Used internally; prefer groupName for fuzzy matching.' })),
 
   // Split transaction parameters
   splits: Type.Optional(Type.Array(
@@ -226,6 +239,18 @@ export async function executeYnab(
         return jsonResult(convertMilliunits(await client.get('/api/v1/ynab/analytics/net-worth')));
       case 'debt_tracking':
         return jsonResult(convertMilliunits(await client.get('/api/v1/ynab/analytics/debt')));
+
+      // Category management
+      case 'create_category_group':
+        return await createCategoryGroup(client, input);
+      case 'create_category':
+        return await createCategoryAction(client, input);
+      case 'rename_category':
+        return await renameCategory(client, input);
+      case 'move_category':
+        return await moveCategory(client, input);
+      case 'rename_category_group':
+        return await renameCategoryGroup(client, input);
 
       // Connection
       case 'connection_status':
@@ -422,6 +447,110 @@ async function deleteTransactionAction(client: MynApiClient, input: YnabInput) {
   return jsonResult(convertMilliunits(data));
 }
 
+/** Resolve a category group name to its ID via fuzzy search against list_categories. */
+async function resolveCategoryGroupId(client: MynApiClient, name: string): Promise<{ id: string; name: string } | null> {
+  const data = await client.get<{
+    categoryGroups: Array<{ id: string; name: string; categories: unknown[] }>;
+  }>('/api/v1/ynab/budget/categories');
+
+  if (!data?.categoryGroups) return null;
+  const lower = name.toLowerCase();
+
+  // Exact match first
+  for (const g of data.categoryGroups) {
+    if (g.name.toLowerCase() === lower) return { id: g.id, name: g.name };
+  }
+  // Contains match
+  for (const g of data.categoryGroups) {
+    if (g.name.toLowerCase().includes(lower) || lower.includes(g.name.toLowerCase())) return { id: g.id, name: g.name };
+  }
+  return null;
+}
+
+async function createCategoryGroup(client: MynApiClient, input: YnabInput) {
+  const name = input.groupName;
+  if (!name) {
+    return errorResult('groupName is required for create_category_group.');
+  }
+  const data = await client.post<unknown>('/api/v1/ynab/budget/category-groups', { name });
+  return jsonResult(data);
+}
+
+async function createCategoryAction(client: MynApiClient, input: YnabInput) {
+  if (!input.categoryName) {
+    return errorResult('categoryName is required for create_category.');
+  }
+  // Resolve group by name or use explicit ID
+  let groupId = input.categoryGroupId;
+  if (!groupId && input.groupName) {
+    const group = await resolveCategoryGroupId(client, input.groupName);
+    if (!group) {
+      return errorResult(`Category group '${input.groupName}' not found. Use list_categories to see available groups, or create_category_group to create one.`);
+    }
+    groupId = group.id;
+  }
+  if (!groupId) {
+    return errorResult('groupName or categoryGroupId is required for create_category.');
+  }
+  const body: Record<string, unknown> = { name: input.categoryName, categoryGroupId: groupId };
+  if (input.note) body.note = input.note;
+  const data = await client.post<unknown>('/api/v1/ynab/budget/categories', body);
+  return jsonResult(data);
+}
+
+async function renameCategory(client: MynApiClient, input: YnabInput) {
+  if (!input.categoryName) {
+    return errorResult('categoryName is required (current name to find the category).');
+  }
+  if (!input.newName) {
+    return errorResult('newName is required for rename_category.');
+  }
+  const categoryId = await resolveCategoryId(client, input.categoryName);
+  if (!categoryId) {
+    return errorResult(`Category '${input.categoryName}' not found.`);
+  }
+  const data = await client.patch<unknown>(`/api/v1/ynab/budget/categories/${categoryId}/details`, { name: input.newName });
+  return jsonResult(data);
+}
+
+async function moveCategory(client: MynApiClient, input: YnabInput) {
+  if (!input.categoryName) {
+    return errorResult('categoryName is required (category to move).');
+  }
+  if (!input.targetGroupName && !input.categoryGroupId) {
+    return errorResult('targetGroupName or categoryGroupId is required (destination group).');
+  }
+  const categoryId = await resolveCategoryId(client, input.categoryName);
+  if (!categoryId) {
+    return errorResult(`Category '${input.categoryName}' not found.`);
+  }
+  let groupId = input.categoryGroupId;
+  if (!groupId && input.targetGroupName) {
+    const group = await resolveCategoryGroupId(client, input.targetGroupName);
+    if (!group) {
+      return errorResult(`Category group '${input.targetGroupName}' not found.`);
+    }
+    groupId = group.id;
+  }
+  const data = await client.patch<unknown>(`/api/v1/ynab/budget/categories/${categoryId}/details`, { categoryGroupId: groupId });
+  return jsonResult(data);
+}
+
+async function renameCategoryGroup(client: MynApiClient, input: YnabInput) {
+  if (!input.groupName) {
+    return errorResult('groupName is required (current group name).');
+  }
+  if (!input.newName) {
+    return errorResult('newName is required for rename_category_group.');
+  }
+  const group = await resolveCategoryGroupId(client, input.groupName);
+  if (!group) {
+    return errorResult(`Category group '${input.groupName}' not found.`);
+  }
+  const data = await client.patch<unknown>(`/api/v1/ynab/budget/category-groups/${group.id}`, { name: input.newName });
+  return jsonResult(data);
+}
+
 async function splitTransaction(client: MynApiClient, input: YnabInput) {
   if (!input.transactionId) {
     return errorResult('transactionId is required for split_transaction. Use list_transactions to find the transaction.');
@@ -582,6 +711,7 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
       'Scheduled: scheduled_transactions, create_scheduled_transaction, update_scheduled_transaction, delete_scheduled_transaction, subscriptions, upcoming_bills.',
       'Analytics: spending_insights, payee_analysis, spending_trends, net_worth, debt_tracking.',
       'Connection: connection_status.',
+      'Category Management: create_category_group, create_category, rename_category, move_category (to different group), rename_category_group.',
       'Amounts in dollars (negative=expense). Categories resolved by name (fuzzy match).'
     ].join(' '),
     inputSchema: YnabInputSchema,
