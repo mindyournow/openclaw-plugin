@@ -57,8 +57,10 @@ export const YnabInputSchema = Type.Object({
 
   // Shared parameters
   categoryName: Type.Optional(Type.String({ description: 'Category name. For create_category: the new category name. For other actions (category_balance, set_category_goal, create_transaction, rename_category, move_category, split_transaction): fuzzy-matched against existing categories.' })),
-  accountId: Type.Optional(Type.String({ description: 'YNAB account ID. Use account_balances to find IDs.' })),
+  accountId: Type.Optional(Type.String({ description: 'YNAB account ID (source account). Use account_balances to find IDs.' })),
   payeeName: Type.Optional(Type.String({ description: 'Payee name. Used by create_transaction, create_transactions_bulk, search_payees, create_scheduled_transaction.' })),
+  payeeId: Type.Optional(Type.String({ description: 'Payee ID. For transfers: use the transferPayeeId of the target account (from account_balances). Takes precedence over payeeName.' })),
+  transferToAccount: Type.Optional(Type.String({ description: 'Target account name for transfers (fuzzy match). Creates a proper YNAB transfer by resolving to the account\'s transferPayeeId. Use with create_transaction instead of payeeName.' })),
   amount: Type.Optional(Type.Number({ description: 'Amount in dollars. Negative for expenses (e.g., -45.50), positive for income.' })),
   date: Type.Optional(Type.String({ description: 'Date in YYYY-MM-DD format. Defaults to today for transactions. Used as sinceDate filter for list_transactions.' })),
   memo: Type.Optional(Type.String({ description: 'Optional memo/note.' })),
@@ -341,11 +343,40 @@ async function createTransaction(client: MynApiClient, input: YnabInput) {
   if (!input.accountId) {
     return errorResult('accountId is required for create_transaction. Use account_balances to find IDs.');
   }
-  if (!input.payeeName) {
-    return errorResult('payeeName is required for create_transaction.');
-  }
   if (input.amount == null) {
     return errorResult('amount is required for create_transaction (in dollars, negative for expenses).');
+  }
+
+  // Resolve transfer target account → payeeId
+  let payeeId = input.payeeId;
+  if (!payeeId && input.transferToAccount) {
+    const accounts = await client.get<{
+      checking: Array<{ id: string; name: string; transferPayeeId: string }>;
+      savings: Array<{ id: string; name: string; transferPayeeId: string }>;
+      creditCards: Array<{ id: string; name: string; transferPayeeId: string }>;
+      loans: Array<{ id: string; name: string; transferPayeeId: string }>;
+    }>('/api/v1/ynab/budget/accounts');
+
+    const allAccounts = [
+      ...(accounts?.checking ?? []),
+      ...(accounts?.savings ?? []),
+      ...(accounts?.creditCards ?? []),
+      ...(accounts?.loans ?? [])
+    ];
+    const targetLower = input.transferToAccount.toLowerCase();
+    const target = allAccounts.find(a => a.name.toLowerCase().includes(targetLower))
+      || allAccounts.find(a => targetLower.includes(a.name.toLowerCase()));
+    if (!target) {
+      return errorResult(`Transfer target account '${input.transferToAccount}' not found. Use account_balances to see available accounts.`);
+    }
+    if (!target.transferPayeeId) {
+      return errorResult(`Account '${target.name}' does not have a transfer payee ID.`);
+    }
+    payeeId = target.transferPayeeId;
+  }
+
+  if (!payeeId && !input.payeeName) {
+    return errorResult('payeeName or transferToAccount is required for create_transaction.');
   }
 
   const amountMilliunits = Math.round(input.amount * 1000);
@@ -359,13 +390,13 @@ async function createTransaction(client: MynApiClient, input: YnabInput) {
     categoryId = resolved;
   }
 
-  // YNAB API defaults to "uncleared" when cleared status not specified
   const body: Record<string, unknown> = {
     accountId: input.accountId,
-    payeeName: input.payeeName,
     amountMilliunits,
     date: input.date || today()
   };
+  if (payeeId) body.payeeId = payeeId;
+  if (!payeeId && input.payeeName) body.payeeName = input.payeeName;
   if (input.memo) body.memo = input.memo;
   if (categoryId) body.categoryId = categoryId;
 
