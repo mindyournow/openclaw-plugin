@@ -227,7 +227,8 @@ export async function executeYnab(
       // Analytics
       case 'spending_insights': {
         const months = input.months || 3;
-        return jsonResult(convertMilliunits(await client.get(`/api/v1/ynab/analytics/spending?months=${months}`)));
+        const catFilter = input.categoryName ? `&category=${encodeURIComponent(input.categoryName)}` : '';
+        return jsonResult(convertMilliunits(await client.get(`/api/v1/ynab/analytics/spending?months=${months}${catFilter}`)));
       }
       case 'payee_analysis': {
         const months = input.months || 3;
