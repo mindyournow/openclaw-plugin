@@ -459,6 +459,29 @@ async function updateTransaction(client: MynApiClient, input: YnabInput) {
   if (input.cleared) body.cleared = input.cleared;
   if (input.flagColor) body.flagColor = input.flagColor;
 
+  // Resolve transfer target → payeeId (same logic as createTransaction)
+  if (input.payeeId) {
+    body.payeeId = input.payeeId;
+  } else if (input.transferToAccount) {
+    const accounts = await client.get<{
+      checking: Array<{ id: string; name: string; transferPayeeId: string }>;
+      savings: Array<{ id: string; name: string; transferPayeeId: string }>;
+      creditCards: Array<{ id: string; name: string; transferPayeeId: string }>;
+      loans: Array<{ id: string; name: string; transferPayeeId: string }>;
+    }>('/api/v1/ynab/budget/accounts');
+    const allAccounts = [
+      ...(accounts?.checking ?? []), ...(accounts?.savings ?? []),
+      ...(accounts?.creditCards ?? []), ...(accounts?.loans ?? [])
+    ];
+    const targetLower = input.transferToAccount.toLowerCase();
+    const target = allAccounts.find(a => a.name.toLowerCase().includes(targetLower))
+      || allAccounts.find(a => targetLower.includes(a.name.toLowerCase()));
+    if (!target?.transferPayeeId) {
+      return errorResult(`Transfer target account '${input.transferToAccount}' not found or has no transfer payee ID.`);
+    }
+    body.payeeId = target.transferPayeeId;
+  }
+
   if (input.categoryName) {
     const categoryId = await resolveCategoryId(client, input.categoryName);
     if (!categoryId) {
