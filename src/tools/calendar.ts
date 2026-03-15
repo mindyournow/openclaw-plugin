@@ -50,6 +50,7 @@ function setCachedDetail(eventId: string, data: Record<string, unknown>): void {
 
 export const CalendarInputSchema = Type.Object({
   action: Type.Union([
+    Type.Literal('list_calendars'),
     Type.Literal('list_events'),
     Type.Literal('get_event'),
     Type.Literal('create_event'),
@@ -70,7 +71,7 @@ export const CalendarInputSchema = Type.Object({
   endTime: Type.Optional(Type.String({ format: 'date-time' })),
   isAllDay: Type.Optional(Type.Boolean({ default: false })),
   location: Type.Optional(Type.String()),
-  // attendees: email addresses OR first names of household members (resolved automatically)
+  // attendees: email addresses, first names of household members, or "family" / "everyone" to invite all household members
   attendees: Type.Optional(Type.Array(Type.String())),
   recurrence: Type.Optional(Type.String()), // RRULE format
   reminders: Type.Optional(Type.Array(Type.Object({
@@ -101,6 +102,8 @@ export async function executeCalendar(
 ): Promise<{ success: true; data: unknown } | { success: false; error: string; details?: unknown }> {
   try {
     switch (input.action) {
+      case 'list_calendars':
+        return await listCalendars(client);
       case 'list_events':
         return await listEvents(client, input);
       case 'get_event':
@@ -150,6 +153,49 @@ function slimEvents(events: Array<Record<string, unknown>>): Array<Record<string
     }
     return rest;
   });
+}
+
+async function listCalendars(client: MynApiClient) {
+  const data = await client.get<{
+    calendars: Array<{ id: string; name: string; using: boolean; timeZone: string; accessRole: string; accountEmail: string }>;
+  }>('/api/v1/customers/calendars');
+  return jsonResult(data);
+}
+
+/**
+ * Resolve a calendar name to its ID by fuzzy matching against available calendars.
+ * Exported so the tasks tool can reuse it for calendarName resolution.
+ */
+export async function resolveCalendarId(client: MynApiClient, name: string): Promise<string | null> {
+  const data = await client.get<{
+    calendars: Array<{ id: string; name: string; using: boolean }>;
+  }>('/api/v1/customers/calendars');
+
+  if (!data?.calendars) return null;
+
+  const nameLower = name.toLowerCase();
+
+  // First pass: exact match
+  for (const cal of data.calendars) {
+    if (cal.name && cal.name.toLowerCase() === nameLower) return cal.id;
+  }
+
+  // Second pass: contains
+  for (const cal of data.calendars) {
+    if (cal.name && cal.name.toLowerCase().includes(nameLower)) return cal.id;
+  }
+
+  // Third pass: word match (skip short words)
+  for (const cal of data.calendars) {
+    if (!cal.name) continue;
+    const words = cal.name.toLowerCase().split(/\s+/);
+    for (const word of words) {
+      if (word.length < 3) continue;
+      if (word.includes(nameLower) || nameLower.includes(word)) return cal.id;
+    }
+  }
+
+  return null;
 }
 
 async function listEvents(client: MynApiClient, input: CalendarInput) {
@@ -241,16 +287,20 @@ async function resolveAttendeesToEmails(
 ): Promise<string[]> {
   const emails: string[] = [];
   const namesToResolve: string[] = [];
+  let inviteAllMembers = false;
 
   for (const attendee of attendees) {
-    if (attendee.includes('@')) {
+    const lower = attendee.toLowerCase().trim();
+    if (lower === 'family' || lower === 'everyone' || lower === 'all' || lower === 'whole family' || lower === 'all family') {
+      inviteAllMembers = true;
+    } else if (attendee.includes('@')) {
       emails.push(attendee);
     } else {
-      namesToResolve.push(attendee.toLowerCase());
+      namesToResolve.push(lower);
     }
   }
 
-  if (namesToResolve.length === 0) {
+  if (!inviteAllMembers && namesToResolve.length === 0) {
     return emails;
   }
 
@@ -262,14 +312,24 @@ async function resolveAttendeesToEmails(
       }>(`/api/v1/households/${household.id}/members`);
 
       const members = membersData?.members ?? [];
-      for (const name of namesToResolve) {
-        const matched = members.find(m => {
-          const memberName = m.name.toLowerCase();
-          const firstName = memberName.split(' ')[0];
-          return memberName.includes(name) || name.includes(firstName);
-        });
-        if (matched?.email) {
-          emails.push(matched.email);
+
+      if (inviteAllMembers) {
+        // Add all household members with email addresses
+        for (const m of members) {
+          if (m.email && !emails.includes(m.email)) {
+            emails.push(m.email);
+          }
+        }
+      } else {
+        for (const name of namesToResolve) {
+          const matched = members.find(m => {
+            const memberName = m.name.toLowerCase();
+            const firstName = memberName.split(' ')[0];
+            return memberName.includes(name) || name.includes(firstName);
+          });
+          if (matched?.email && !emails.includes(matched.email)) {
+            emails.push(matched.email);
+          }
         }
       }
     }
@@ -420,7 +480,7 @@ export function registerCalendarTool(api: OpenClawPluginApi, client: MynApiClien
   api.registerTool({
     id: 'myn_calendar',
     name: 'MYN Calendar',
-    description: 'Manage calendar events and meetings. Actions: list_events, get_event, create_event, update_event, delete_event, meetings. list_events returns slim events (truncated descriptions, no attendees). Use get_event with eventId for full details (complete description, attendees, etc.). For create_event: startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00"). For update_event: pass eventId and any fields to change (newTitle, newDescription, newLocation, newStartTime, newEndTime, addAttendees). Attendees can be email addresses or household member first names.',
+    description: 'Manage calendar events and meetings. Actions: list_calendars (get available calendars with id/name), list_events, get_event, create_event, update_event, delete_event, meetings. Use list_calendars to find calendar IDs when user mentions a calendar by name (e.g. "family calendar"). For create_event: startTime must be ISO 8601. For update_event: pass eventId and fields to change. SHARING: To share/invite people, use the attendees field with email addresses, household member first names, or "family"/"everyone" to invite all household members. When user says "share with family" or "invite everyone", pass attendees: ["family"].',
     inputSchema: CalendarInputSchema,
     async execute(input: unknown) {
       return executeCalendar(client, input as CalendarInput);
