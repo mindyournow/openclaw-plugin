@@ -71,9 +71,9 @@ export const YnabInputSchema = Type.Object({
   month: Type.Optional(Type.String({ description: 'Budget month in YYYY-MM format (e.g., 2026-03). Defaults to current month. Used by set_budget_amount.' })),
 
   // Goal parameters
-  goalType: Type.Optional(Type.String({ description: 'Goal type: TB (Target Balance), TBD (Target Balance by Date), MF (Monthly Funding), NEED (Plan Your Spending).' })),
-  goalTargetDollars: Type.Optional(Type.Number({ description: 'Goal target in dollars (e.g., 500.00).' })),
-  goalTargetMonth: Type.Optional(Type.String({ description: 'Target month YYYY-MM (e.g., 2026-06). Required for TBD goals.' })),
+  goalType: Type.Optional(Type.String({ description: 'Goal type: TB (Target Balance), TBD (Target Balance by Date), MF (Monthly Funding), NEED (Plan Your Spending). NOTE: YNAB API ignores this field — goal type is determined by YNAB based on goal_target and goal_target_date. MF goals cannot be created via API; they must be set manually in the YNAB app.' })),
+  goalTargetDollars: Type.Optional(Type.Number({ description: 'Goal target in dollars (e.g., 500.00). Without goalTargetMonth, creates a NEED goal. With goalTargetMonth, creates a TBD goal.' })),
+  goalTargetMonth: Type.Optional(Type.String({ description: 'Target month YYYY-MM (e.g., 2026-06). Makes the goal a TBD (Target Balance by Date) type.' })),
 
   // Scheduled transaction parameters
   transactionId: Type.Optional(Type.String({ description: 'Transaction ID. Required for update/delete_transaction and update/delete_scheduled_transaction.' })),
