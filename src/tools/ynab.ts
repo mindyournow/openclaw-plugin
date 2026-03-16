@@ -769,6 +769,7 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
       'Connection: connection_status.',
       'Category Management: create_category_group, create_category, rename_category, move_category (to different group), rename_category_group.',
       'Amounts in dollars (negative=expense). Categories resolved by name (fuzzy match).',
+      'CATEGORIZATION: When creating transactions, ALWAYS call list_categories first to find the most relevant category. Do NOT guess common names like "Groceries" — look at what categories actually exist. If no existing category fits well, suggest creating a new one with create_category. Consider the payee and items to pick the right category (e.g., Dollar General selling cigarettes should use "Cigarettes" not "Groceries"). For mixed purchases, consider split_transaction.',
       'CREDIT CARD TIPS: Credit card payment categories track "Available for Payment" which accumulates from budgeted spending on those cards. To zero out/remove available balance from a CC payment category, use set_budget_amount with a NEGATIVE amount (e.g., -76.51 to pull $76.51 out). Setting budget to 0 does NOT remove existing available balance. To move money between categories, negative-budget the source and positive-budget the destination. Always just do what the user asks — don\'t ask for confirmation on straightforward budget operations.'
     ].join(' '),
     inputSchema: YnabInputSchema,
