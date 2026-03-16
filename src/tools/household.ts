@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPost } from '../client.js';
 
 export const HouseholdInputSchema = Type.Object({
   action: Type.Union([
@@ -205,12 +205,13 @@ async function completeChore(client: MynApiClient, input: HouseholdInput) {
   if (input.completedBy) body.completedBy = input.completedBy;
   if (input.note) body.note = input.note;
 
-  const data = await client.post<{
+  // MIN-740: guardedPost reads state hash from chore instance before completing
+  const data = await guardedPost<{
     choreId: string;
     completed: boolean;
     completedAt: string;
     nextDueDate?: string;
-  }>(`/api/v2/chores/instances/${input.choreId}/complete`, body);
+  }>(client, `/api/v2/chores/instances/${input.choreId}/complete`, body, `/api/v2/chores/instances/${input.choreId}`);
 
   return jsonResult(data);
 }

@@ -79,8 +79,8 @@ async function createPlan(client: MynApiClient, _input: PlanningInput) {
 async function scheduleAll(client: MynApiClient, _input: PlanningInput) {
   // Auto-schedules all eligible tasks (today or past start date, not completed,
   // not OVER_THE_HORIZON/PARKING_LOT) for the authenticated user, then triggers planning.
-  // The backend PlanningController at GET /planning/scheduleAll handles this automatically.
-  const data = await client.get<string>('/planning/scheduleAll');
+  // MIN-740: Changed from GET to POST (read-before-write refactor).
+  const data = await client.post<string>('/planning/scheduleAll', {});
 
   return jsonResult({ result: data });
 }
@@ -88,9 +88,9 @@ async function scheduleAll(client: MynApiClient, _input: PlanningInput) {
 async function reschedule(client: MynApiClient, input: PlanningInput) {
   // "Kick the can" — reschedules overdue/today tasks into the future based on priority.
   // Optionally pass rebalance=true to redistribute all uncompleted tasks evenly.
-  // The backend PlanningController at GET /planning/kickTheCan handles this automatically.
+  // MIN-740: Changed from GET to POST (read-before-write refactor).
   const rebalance = input.spreadOverDays && input.spreadOverDays > 1 ? 'true' : 'false';
-  const data = await client.get<unknown>(`/planning/kickTheCan?rebalance=${rebalance}`);
+  const data = await client.post<unknown>(`/planning/kickTheCan?rebalance=${rebalance}`, {});
 
   return jsonResult(data);
 }

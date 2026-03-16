@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPatch, guardedPost } from '../client.js';
 
 // Schema definitions
 const PrioritySchema = Type.Union([
@@ -173,7 +173,13 @@ async function updateTask(client: MynApiClient, input: TasksInput) {
     return errorResult('updates object is required for update action');
   }
 
-  const data = await client.patch<unknown>(`/api/v2/unified-tasks/${input.taskId}`, input.updates);
+  // MIN-740: read-before-write — automatically reads current stateHash, retries on 409
+  const data = await guardedPatch<unknown>(
+    client,
+    `/api/v2/unified-tasks/${input.taskId}`,
+    input.updates,
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
   return jsonResult(data);
 }
 
@@ -182,7 +188,13 @@ async function completeTask(client: MynApiClient, input: TasksInput) {
     return errorResult('taskId is required for complete action');
   }
 
-  const data = await client.post<unknown>(`/api/v2/unified-tasks/${input.taskId}/complete`, {});
+  // MIN-740: read-before-write — reads task first to get stateHash
+  const data = await guardedPost<unknown>(
+    client,
+    `/api/v2/unified-tasks/${input.taskId}/complete`,
+    {},
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
   return jsonResult(data);
 }
 
@@ -191,7 +203,13 @@ async function archiveTask(client: MynApiClient, input: TasksInput) {
     return errorResult('taskId is required for archive action');
   }
 
-  const data = await client.post<unknown>(`/api/v2/unified-tasks/${input.taskId}/archive`, {});
+  // MIN-740: read-before-write — reads task first to get stateHash
+  const data = await guardedPost<unknown>(
+    client,
+    `/api/v2/unified-tasks/${input.taskId}/archive`,
+    {},
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
   return jsonResult(data);
 }
 
