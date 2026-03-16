@@ -177,6 +177,17 @@ export async function guardedPost<T>(
   return guardedWrite<T>(client, 'POST', path, body, getPath);
 }
 
+/**
+ * Perform a DELETE request with automatic read-before-write state hash enforcement.
+ */
+export async function guardedDelete<T>(
+  client: MynApiClient,
+  path: string,
+  getPath?: string
+): Promise<T> {
+  return guardedWrite<T>(client, 'DELETE', path, undefined, getPath);
+}
+
 async function guardedWrite<T>(
   client: MynApiClient,
   method: 'PATCH' | 'PUT' | 'POST' | 'DELETE',

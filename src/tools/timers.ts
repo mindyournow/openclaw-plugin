@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPost } from '../client.js';
 
 export const TimersInputSchema = Type.Object({
   action: Type.Union([
@@ -151,10 +151,11 @@ async function cancelTimer(client: MynApiClient, input: TimersInput) {
     return errorResult('timerId is required for cancel action');
   }
 
-  const data = await client.post<{
+  // MIN-740: guardedPost reads state hash from timer before cancelling
+  const data = await guardedPost<{
     timerId: string;
     status: string;
-  }>(`/api/v2/timers/${input.timerId}/cancel`);
+  }>(client, `/api/v2/timers/${input.timerId}/cancel`, undefined, `/api/v2/timers/${input.timerId}`);
 
   return jsonResult(data);
 }
@@ -168,11 +169,12 @@ async function snoozeTimer(client: MynApiClient, input: TimersInput) {
     snoozeMinutes: input.snoozeMinutes ?? 5
   };
 
-  const data = await client.post<{
+  // MIN-740: guardedPost reads state hash from timer before snoozing
+  const data = await guardedPost<{
     timerId: string;
     snoozedUntil: string;
     status: 'SNOOZED';
-  }>(`/api/v2/timers/${input.timerId}/snooze`, body);
+  }>(client, `/api/v2/timers/${input.timerId}/snooze`, body, `/api/v2/timers/${input.timerId}`);
 
   return jsonResult(data);
 }

@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedDelete } from '../client.js';
 
 export const CalendarInputSchema = Type.Object({
   action: Type.Union([
@@ -196,7 +196,8 @@ async function deleteEvent(client: MynApiClient, input: CalendarInput) {
     return errorResult('eventId is required for delete_event action');
   }
 
-  await client.delete(`/api/v2/calendar/events/${input.eventId}`);
+  // MIN-740: guardedDelete reads current state hash before deleting
+  await guardedDelete(client, `/api/v2/calendar/events/${input.eventId}`);
   return jsonResult({ deleted: true, eventId: input.eventId });
 }
 
