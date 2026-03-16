@@ -768,7 +768,8 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
       'Analytics: spending_insights, payee_analysis, spending_trends, net_worth, debt_tracking.',
       'Connection: connection_status.',
       'Category Management: create_category_group, create_category, rename_category, move_category (to different group), rename_category_group.',
-      'Amounts in dollars (negative=expense). Categories resolved by name (fuzzy match).'
+      'Amounts in dollars (negative=expense). Categories resolved by name (fuzzy match).',
+      'CREDIT CARD TIPS: Credit card payment categories track "Available for Payment" which accumulates from budgeted spending on those cards. To zero out/remove available balance from a CC payment category, use set_budget_amount with a NEGATIVE amount (e.g., -76.51 to pull $76.51 out). Setting budget to 0 does NOT remove existing available balance. To move money between categories, negative-budget the source and positive-budget the destination. Always just do what the user asks — don\'t ask for confirmation on straightforward budget operations.'
     ].join(' '),
     inputSchema: YnabInputSchema,
     async execute(input: unknown) {
