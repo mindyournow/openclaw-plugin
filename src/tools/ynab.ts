@@ -77,7 +77,7 @@ export const YnabInputSchema = Type.Object({
 
   // Scheduled transaction parameters
   transactionId: Type.Optional(Type.String({ description: 'Transaction ID. Required for update/delete_transaction and update/delete_scheduled_transaction.' })),
-  cleared: Type.Optional(Type.String({ description: 'Cleared status: "cleared", "uncleared", or "reconciled". Used by update_transaction.' })),
+  cleared: Type.Optional(Type.String({ description: 'Cleared status: "cleared", "uncleared", or "reconciled". Used by create_transaction and update_transaction. Default is "uncleared" if not specified.' })),
   flagColor: Type.Optional(Type.String({ description: 'Flag color: red, orange, yellow, green, blue, purple. Used by update_transaction.' })),
   frequency: Type.Optional(Type.String({ description: 'Recurrence frequency: never, daily, weekly, everyOtherWeek, twiceAMonth, every4Weeks, monthly, everyOtherMonth, every3Months, every4Months, twiceAYear, yearly, everyOtherYear.' })),
   dateFirst: Type.Optional(Type.String({ description: 'First occurrence date YYYY-MM-DD for create_scheduled_transaction.' })),
@@ -399,6 +399,7 @@ async function createTransaction(client: MynApiClient, input: YnabInput) {
   if (payeeId) body.payeeId = payeeId;
   if (!payeeId && input.payeeName) body.payeeName = input.payeeName;
   if (input.memo) body.memo = input.memo;
+  if (input.cleared) body.cleared = input.cleared;
   if (categoryId) body.categoryId = categoryId;
 
   const data = await client.post<unknown>('/api/v1/ynab/transactions', body);
