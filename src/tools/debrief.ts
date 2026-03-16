@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPost } from '../client.js';
 
 export const DebriefInputSchema = Type.Object({
   action: Type.Union([
@@ -121,11 +121,12 @@ async function applyCorrection(client: MynApiClient, input: DebriefInput) {
   if (input.correctionData) body.data = input.correctionData;
   if (input.reason) body.reason = input.reason;
 
-  const data = await client.post<{
+  // MIN-740: guardedPost reads state hash from compass current state before applying correction
+  const data = await guardedPost<{
     correctionId: string;
     appliedAt: string;
     debriefUpdated: boolean;
-  }>('/api/v2/debrief/corrections/apply', body);
+  }>(client, '/api/v2/debrief/corrections/apply', body, '/api/v2/debrief/current');
   return jsonResult(data);
 }
 
@@ -135,12 +136,13 @@ async function completeSession(client: MynApiClient, input: DebriefInput) {
   if (input.sessionSummary) body.summary = input.sessionSummary;
   if (input.decisions) body.decisions = input.decisions;
 
-  const data = await client.post<{
+  // MIN-740: guardedPost reads state hash from compass current state before completing session
+  const data = await guardedPost<{
     sessionId: string;
     completedAt: string;
     nextSessionRecommended?: string;
     followUps: unknown[];
-  }>('/api/v2/debrief/complete', body);
+  }>(client, '/api/v2/debrief/complete', body, '/api/v2/debrief/current');
   return jsonResult(data);
 }
 
