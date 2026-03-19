@@ -5,6 +5,7 @@
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult } from '../client.js';
+import { escapeMarkdown } from '../validation.js';
 
 export const ProfileInputSchema = Type.Object({
   action: Type.Union([
@@ -124,12 +125,13 @@ async function updateGoals(client: MynApiClient, input: ProfileInput) {
     return errorResult('goals array is required for update_goals action');
   }
 
-  // Format goals as markdown — the backend stores goals as a single text field
+  // Format goals as markdown — the backend stores goals as a single text field.
+  // BP4: Escape user-controlled values to prevent markdown injection.
   const markdown = input.goals.map(g => {
-    let line = `- **${g.title}**`;
+    let line = `- **${escapeMarkdown(g.title)}**`;
     if (g.status) line += ` [${g.status}]`;
     if (g.priority) line += ` (${g.priority} priority)`;
-    if (g.description) line += `\n  ${g.description}`;
+    if (g.description) line += `\n  ${escapeMarkdown(g.description)}`;
     if (g.targetDate) line += `\n  Target: ${g.targetDate}`;
     return line;
   }).join('\n');

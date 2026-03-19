@@ -81,12 +81,25 @@ async function a2aFetch(url: string, options: RequestInit): Promise<unknown> {
   return response.status === 204 ? null : response.json();
 }
 
+/** Invite code pattern: 3 uppercase letters, dash, 5 digits (e.g. ABC-12345) */
+const INVITE_CODE_REGEX = /^[A-Z]{3}-\d{5}$/;
+
+/** Agent name pattern: lowercase alphanumeric and hyphens only */
+const AGENT_NAME_REGEX = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$|^[a-z0-9]$/;
+
 /**
  * Execute a MYN A2A pairing action.
  */
 export async function myn_a2a_pairing(input: MynA2APairingInput, configuredBaseUrl?: string): Promise<unknown> {
-  const base = (configuredBaseUrl ?? 'https://api.mindyournow.com').replace(/\/$/, '');
+  const rawBase = (configuredBaseUrl ?? 'https://api.mindyournow.com').replace(/\/$/, '');
   const caps = input.capabilities ?? [];
+
+  // W5: Reject non-HTTPS base URLs (allow http://localhost for development)
+  if (!rawBase.startsWith('https://') && !rawBase.startsWith('http://localhost')) {
+    return errorResult(`STOP: baseUrl must use HTTPS (got: ${rawBase}). The API URL is pre-configured — contact support if you believe this is an error.`);
+  }
+
+  const base = rawBase;
 
   try {
     switch (input.action) {
@@ -98,6 +111,13 @@ export async function myn_a2a_pairing(input: MynA2APairingInput, configuredBaseU
       case 'redeem_invite': {
         if (!input.inviteCode || !input.agentName) {
           return errorResult('STOP: inviteCode and agentName are required. Do not retry — ask the user for the missing values.');
+        }
+        // BP5: Validate invite code and agent name formats
+        if (!INVITE_CODE_REGEX.test(input.inviteCode)) {
+          return errorResult('STOP: inviteCode must be in the format ABC-12345 (3 uppercase letters, dash, 5 digits). Ask the user for the correct invite code from MYN Settings.');
+        }
+        if (!AGENT_NAME_REGEX.test(input.agentName)) {
+          return errorResult('STOP: agentName must be lowercase alphanumeric with optional hyphens (e.g. "openclaw"). Do not retry with a different format.');
         }
 
         const manifest = {

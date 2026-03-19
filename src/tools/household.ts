@@ -131,6 +131,8 @@ async function getChores(client: MynApiClient, input: HouseholdInput) {
     return errorResult('No household found. Please specify householdId.');
   }
 
+  // W3: Use URLSearchParams to prevent URL parameter injection
+  const choreParams = new URLSearchParams({ householdId });
   const data = await client.get<{
     householdId: string;
     chores: Array<{
@@ -143,7 +145,7 @@ async function getChores(client: MynApiClient, input: HouseholdInput) {
       difficulty: 'easy' | 'medium' | 'hard';
       category?: string;
     }>;
-  }>(`/api/v2/chores/today?householdId=${householdId}`);
+  }>(`/api/v2/chores/today?${choreParams.toString()}`);
 
   return jsonResult(data);
 }

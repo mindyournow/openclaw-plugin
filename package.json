@@ -55,7 +55,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@mind-your-now/skills": "^0.1.0",
+    "@mind-your-now/skills": "0.1.0",
     "@sinclair/typebox": "^0.34.0"
   },
   "peerDependencies": {

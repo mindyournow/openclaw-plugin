@@ -83,9 +83,14 @@ async function remember(_client: MynApiClient, input: MemoryInput) {
   );
 }
 
+/** W4: Maximum number of memories to fetch from the backend */
+const MEMORY_FETCH_LIMIT = 50;
+
 async function recall(client: MynApiClient, input: MemoryInput) {
   // The backend only supports GET /api/v1/customers/memories (list all).
   // There is no GET /api/v1/customers/memories/{memoryId} endpoint.
+  // W4: Cap at 50 records to avoid over-fetching user data
+  const params = new URLSearchParams({ limit: String(MEMORY_FETCH_LIMIT) });
   const data = await client.get<
     Array<{
       memoryId: string;
@@ -96,7 +101,7 @@ async function recall(client: MynApiClient, input: MemoryInput) {
       createdAt: string;
       accessedAt?: string;
     }>
-  >('/api/v1/customers/memories');
+  >(`/api/v1/customers/memories?${params.toString()}`);
 
   if (input.memoryId) {
     // Filter client-side for a specific memory
@@ -126,7 +131,9 @@ async function forget(client: MynApiClient, input: MemoryInput) {
 
 async function searchMemories(client: MynApiClient, input: MemoryInput) {
   // The backend has no /api/v1/customers/memories/search endpoint.
-  // Fetch all memories and filter client-side.
+  // Fetch up to MEMORY_FETCH_LIMIT memories and filter client-side.
+  // W4: Cap at 50 records to avoid over-fetching user data
+  const params = new URLSearchParams({ limit: String(MEMORY_FETCH_LIMIT) });
   const data = await client.get<
     Array<{
       memoryId: string;
@@ -136,7 +143,7 @@ async function searchMemories(client: MynApiClient, input: MemoryInput) {
       importance: string;
       createdAt: string;
     }>
-  >('/api/v1/customers/memories');
+  >(`/api/v1/customers/memories?${params.toString()}`);
 
   let results = Array.isArray(data) ? data : [];
 

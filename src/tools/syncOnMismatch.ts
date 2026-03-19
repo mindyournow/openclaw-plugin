@@ -80,6 +80,9 @@ async function sendCapabilityUpdate(
   }
 }
 
+/** Optional logger callback for error reporting */
+type LoggerFn = (message: string) => void;
+
 /**
  * withSyncOnMismatch — wraps an A2A fetch call with automatic capability re-sync.
  *
@@ -87,6 +90,7 @@ async function sendCapabilityUpdate(
  * @param mynBaseUrl     MYN API base URL (e.g. https://api.mindyournow.com).
  * @param agentKey       Current X-Agent-Key for authenticated requests.
  * @param manifest       Current capability manifest to send if a mismatch is detected.
+ * @param onError        Optional callback for sync errors (W6: avoid silent suppression).
  * @returns              The original response from fetchFn (the sync is a side-effect).
  */
 export async function withSyncOnMismatch<T extends A2AResponseWithPending>(
@@ -94,13 +98,19 @@ export async function withSyncOnMismatch<T extends A2AResponseWithPending>(
   mynBaseUrl: string,
   agentKey: string,
   manifest: CapabilityManifest,
+  onError?: LoggerFn,
 ): Promise<T> {
   const result = await fetchFn();
 
   if (result?.capabilityUpdatePending === true) {
     // Fire-and-forget: don't block the caller on the sync
     sendCapabilityUpdate(mynBaseUrl, agentKey, manifest).catch((err) => {
-      console.warn('[syncOnMismatch] Capability sync failed:', err?.message ?? err);
+      const errMsg = err?.message ?? err;
+      if (onError) {
+        onError(`[syncOnMismatch] Capability sync failed: ${errMsg}`);
+      } else {
+        console.warn('[syncOnMismatch] Capability sync failed:', errMsg);
+      }
     });
   }
 
@@ -112,16 +122,24 @@ export async function withSyncOnMismatch<T extends A2AResponseWithPending>(
  * if capabilityUpdatePending is true.  Use this when you already have the
  * response object and want to retrofit sync behaviour without restructuring
  * the call site.
+ *
+ * @param onError  Optional callback for sync errors (W6: avoid silent suppression).
  */
 export function checkAndSync(
   response: A2AResponseWithPending | null | undefined,
   mynBaseUrl: string,
   agentKey: string,
   manifest: CapabilityManifest,
+  onError?: LoggerFn,
 ): void {
   if (response?.capabilityUpdatePending === true) {
     sendCapabilityUpdate(mynBaseUrl, agentKey, manifest).catch((err) => {
-      console.warn('[syncOnMismatch] Capability sync failed:', err?.message ?? err);
+      const errMsg = err?.message ?? err;
+      if (onError) {
+        onError(`[syncOnMismatch] Capability sync failed: ${errMsg}`);
+      } else {
+        console.warn('[syncOnMismatch] Capability sync failed:', errMsg);
+      }
     });
   }
 }

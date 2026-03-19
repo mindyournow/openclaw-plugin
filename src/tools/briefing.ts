@@ -104,9 +104,11 @@ async function getBriefing(client: MynApiClient, input: BriefingInput) {
     return jsonResult(data);
   }
 
-  // No per-ID endpoint exists; use /current for the active briefing or /history for past ones
-  const data = await client.get<unknown>('/api/v2/compass/current');
-  return jsonResult(data);
+  // BP7: The backend has no per-ID endpoint — return an explicit error rather than silently ignoring the provided ID
+  return errorResult(
+    'Fetching a briefing by ID is not supported. The backend only exposes the current briefing. ' +
+    'Use action "get" without briefingId to retrieve the current briefing.'
+  );
 }
 
 async function applyCorrection(client: MynApiClient, input: BriefingInput) {

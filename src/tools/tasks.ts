@@ -5,6 +5,7 @@
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult } from '../client.js';
+import { validateUuid } from '../validation.js';
 
 // Schema definitions
 const PrioritySchema = Type.Union([
@@ -118,6 +119,8 @@ async function getTask(client: MynApiClient, input: TasksInput) {
   if (!input.taskId) {
     return errorResult('taskId is required for get action');
   }
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
   const data = await client.get<unknown>(`/api/v2/unified-tasks/${input.taskId}`);
   return jsonResult(data);
 }
@@ -165,15 +168,46 @@ async function createTask(client: MynApiClient, input: TasksInput) {
   return jsonResult(data);
 }
 
+/**
+ * W2: Allowlist of safe fields for task updates.
+ * Blocks sensitive fields like ownerId, householdId, createdBy, isLocked.
+ */
+const ALLOWED_UPDATE_FIELDS = new Set([
+  'title', 'description', 'priority', 'status', 'startDate', 'endDate',
+  'duration', 'projectId', 'recurrenceRule', 'isAutoScheduled', 'autoScheduleEnabled',
+  'calendarId', 'location', 'notes', 'tags', 'estimatedMinutes', 'actualMinutes',
+  'completedAt', 'archivedAt', 'taskType', 'assignedTo', 'scheduledAt', 'dueDate'
+]);
+
 async function updateTask(client: MynApiClient, input: TasksInput) {
   if (!input.taskId) {
     return errorResult('taskId is required for update action');
   }
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
   if (!input.updates || Object.keys(input.updates).length === 0) {
     return errorResult('updates object is required for update action');
   }
 
-  const data = await client.patch<unknown>(`/api/v2/unified-tasks/${input.taskId}`, input.updates);
+  // Filter updates to only allowed fields
+  const filteredUpdates: Record<string, unknown> = {};
+  const rejectedFields: string[] = [];
+  for (const [key, value] of Object.entries(input.updates)) {
+    if (ALLOWED_UPDATE_FIELDS.has(key)) {
+      filteredUpdates[key] = value;
+    } else {
+      rejectedFields.push(key);
+    }
+  }
+
+  if (Object.keys(filteredUpdates).length === 0) {
+    return errorResult(
+      `No valid update fields provided. Rejected fields: ${rejectedFields.join(', ')}. ` +
+      `Allowed fields: ${Array.from(ALLOWED_UPDATE_FIELDS).join(', ')}`
+    );
+  }
+
+  const data = await client.patch<unknown>(`/api/v2/unified-tasks/${input.taskId}`, filteredUpdates);
   return jsonResult(data);
 }
 
@@ -181,6 +215,8 @@ async function completeTask(client: MynApiClient, input: TasksInput) {
   if (!input.taskId) {
     return errorResult('taskId is required for complete action');
   }
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
 
   const data = await client.post<unknown>(`/api/v2/unified-tasks/${input.taskId}/complete`, {});
   return jsonResult(data);
@@ -190,6 +226,8 @@ async function archiveTask(client: MynApiClient, input: TasksInput) {
   if (!input.taskId) {
     return errorResult('taskId is required for archive action');
   }
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
 
   const data = await client.post<unknown>(`/api/v2/unified-tasks/${input.taskId}/archive`, {});
   return jsonResult(data);

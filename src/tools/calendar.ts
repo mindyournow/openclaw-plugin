@@ -5,6 +5,7 @@
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult } from '../client.js';
+import { isValidEmail } from '../validation.js';
 
 export const CalendarInputSchema = Type.Object({
   action: Type.Union([
@@ -127,7 +128,11 @@ async function resolveAttendeesToEmails(
 
   for (const attendee of attendees) {
     if (attendee.includes('@')) {
-      emails.push(attendee);
+      // BP3: Validate email format before using it
+      if (isValidEmail(attendee)) {
+        emails.push(attendee);
+      }
+      // Silently skip malformed email addresses
     } else {
       namesToResolve.push(attendee.toLowerCase());
     }

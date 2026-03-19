@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@mind-your-now/skills':
-        specifier: ^0.1.0
-        version: 0.1.1
+        specifier: 0.1.0
+        version: 0.1.0
       '@sinclair/typebox':
         specifier: ^0.34.0
         version: 0.34.48
@@ -807,8 +807,8 @@ packages:
     resolution: {integrity: sha512-rnqDUp2fm/ySevC0Ltj/ZFRbEc1kZ1A4qHESejj9hA8NVrb/pX9g82XwTE762JOieEGrRWAtmHLNOm7/e4dJMw==}
     engines: {node: '>=20.0.0'}
 
-  '@mind-your-now/skills@0.1.1':
-    resolution: {integrity: sha512-Vh/1kfUr94XpLO+Z0TD7EHV0ntC+BKZvmCEOSfeYSmYzPW7cOon/tPDoNgOpV4BbfprQFGvSaJ+uxZZINNWOqA==}
+  '@mind-your-now/skills@0.1.0':
+    resolution: {integrity: sha512-R+W3n2qnxhEBa4Bb0H+lHqfEEWuJTh/cQEnvzFkABxfR7V6hfiTOBCrt26VHqmFZcff1K9gzsXMYkFCGPnMjrg==}
 
   '@mistralai/mistralai@1.10.0':
     resolution: {integrity: sha512-tdIgWs4Le8vpvPiUEWne6tK0qbVc+jMenujnvTqOjogrJUsCSQhus0tHTU1avDDh5//Rq2dFgP9mWRAdIEoBqg==}
@@ -5022,7 +5022,7 @@ snapshots:
       marked: 15.0.12
       mime-types: 3.0.2
 
-  '@mind-your-now/skills@0.1.1': {}
+  '@mind-your-now/skills@0.1.0': {}
 
   '@mistralai/mistralai@1.10.0':
     dependencies:

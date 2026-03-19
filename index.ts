@@ -123,6 +123,13 @@ export default {
       return;
     }
 
+    // W1: Reject non-HTTPS base URLs (allow http://localhost for development)
+    if (!baseUrl.startsWith('https://') && !baseUrl.startsWith('http://localhost')) {
+      api.logger.warn(`[myn] baseUrl must use HTTPS (got: ${baseUrl}). MYN tools will not be registered.`);
+      api.logger.warn('[myn] Set plugins.entries.myn.config.baseUrl to an https:// URL');
+      return;
+    }
+
     api.logger.info('[myn] Initializing Mind Your Now plugin...');
 
     // Create shared API client

@@ -17,17 +17,8 @@ describe('myn_memory', () => {
   });
 
   describe('remember action', () => {
-    it('should store memory with content', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: () => Promise.resolve({
-          memoryId: 'mem-123',
-          stored: true,
-          createdAt: '2026-03-01T10:00:00Z'
-        })
-      });
-
+    it('should return error — direct memory creation not supported by backend', async () => {
+      // The backend has no POST /memories endpoint; memories are created via AI conversations.
       const result = await executeMemory(client, {
         action: 'remember',
         content: 'User prefers morning meetings',
@@ -36,10 +27,9 @@ describe('myn_memory', () => {
         importance: 'medium'
       });
 
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data).toHaveProperty('memoryId');
-        expect(result.data).toHaveProperty('stored', true);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('not supported');
       }
     });
 
@@ -52,60 +42,52 @@ describe('myn_memory', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should store minimal memory', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: () => Promise.resolve({
-          memoryId: 'mem-123',
-          stored: true,
-          createdAt: '2026-03-01T10:00:00Z'
-        })
-      });
-
+    it('should return error even for minimal remember', async () => {
+      // Backend has no POST endpoint — always returns not-supported error.
       const result = await executeMemory(client, {
         action: 'remember',
         content: 'Simple memory'
       });
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
     });
   });
 
   describe('recall action', () => {
     it('should get recent memories', async () => {
+      // Backend returns an array of memory objects (not a wrapper object)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({
-          memories: [
-            { memoryId: '1', content: 'Memory 1', category: 'work_context', tags: [], importance: 'high', createdAt: '2026-03-01T10:00:00Z' }
-          ]
-        })
+        json: () => Promise.resolve([
+          { memoryId: '1', content: 'Memory 1', category: 'work_context', tags: [], importance: 'high', createdAt: '2026-03-01T10:00:00Z' }
+        ])
       });
 
       const result = await executeMemory(client, { action: 'recall' });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('memories');
+        expect(Array.isArray(result.data)).toBe(true);
       }
     });
 
-    it('should get specific memory by id', async () => {
+    it('should get specific memory by id (client-side filter)', async () => {
+      // Backend returns all memories as array; client filters by memoryId
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({
-          memoryId: 'mem-123',
-          content: 'Specific memory',
-          category: 'user_preference',
-          tags: ['pref'],
-          importance: 'medium',
-          createdAt: '2026-03-01T10:00:00Z',
-          accessedAt: '2026-03-01T12:00:00Z',
-          accessCount: 5
-        })
+        json: () => Promise.resolve([
+          {
+            memoryId: '550e8400-e29b-41d4-a716-446655440000',
+            content: 'Specific memory',
+            category: 'user_preference',
+            tags: ['pref'],
+            importance: 'medium',
+            createdAt: '2026-03-01T10:00:00Z',
+            accessedAt: '2026-03-01T12:00:00Z'
+          }
+        ])
       });
 
       const result = await executeMemory(client, {
@@ -115,8 +97,7 @@ describe('myn_memory', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('memoryId', 'mem-123');
-        expect(result.data).toHaveProperty('accessCount');
+        expect(result.data).toHaveProperty('memoryId', '550e8400-e29b-41d4-a716-446655440000');
       }
     });
   });

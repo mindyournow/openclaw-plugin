@@ -76,7 +76,7 @@ describe('Plugin Registration', () => {
   });
 
   describe('with apiKey', () => {
-    it('should register all 12 tools when apiKey is provided', async () => {
+    it('should register all 14 tools when apiKey is provided', async () => {
       const plugin = await import('../../index.js');
 
       mockApi.pluginConfig = {
@@ -89,10 +89,39 @@ describe('Plugin Registration', () => {
       expect(mockApi.logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Initializing Mind Your Now')
       );
-      expect(mockApi.registerTool).toHaveBeenCalledTimes(12);
+      expect(mockApi.registerTool).toHaveBeenCalledTimes(14);
       expect(mockApi.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Registered 12 tools')
+        expect.stringContaining('Registered 14 tools')
       );
+    });
+
+    it('should warn and not register tools when baseUrl is not HTTPS', async () => {
+      const plugin = await import('../../index.js');
+
+      mockApi.pluginConfig = {
+        apiKey: 'test-api-key',
+        baseUrl: 'http://api.mindyournow.com'
+      };
+
+      plugin.default.register(mockApi as unknown as OpenClawPluginApi);
+
+      expect(mockApi.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('must use HTTPS')
+      );
+      expect(mockApi.registerTool).not.toHaveBeenCalled();
+    });
+
+    it('should allow http://localhost as baseUrl for development', async () => {
+      const plugin = await import('../../index.js');
+
+      mockApi.pluginConfig = {
+        apiKey: 'test-api-key',
+        baseUrl: 'http://localhost:8080'
+      };
+
+      plugin.default.register(mockApi as unknown as OpenClawPluginApi);
+
+      expect(mockApi.registerTool).toHaveBeenCalledTimes(14);
     });
 
     it('should use default baseUrl when not provided', async () => {
@@ -128,44 +157,47 @@ describe('Plugin Registration', () => {
   });
 
   describe('tool registration', () => {
-    it('should register tools with correct IDs', async () => {
+    it('should register tools with correct IDs (mapped to name by wrappedApi)', async () => {
       const plugin = await import('../../index.js');
 
-      mockApi.pluginConfig = { apiKey: 'test-key' };
+      mockApi.pluginConfig = { apiKey: 'test-key', baseUrl: 'https://api.mindyournow.com' };
 
       plugin.default.register(mockApi as unknown as OpenClawPluginApi);
 
-      const registeredIds = mockApi.registerTool.mock.calls.map(
-        (call: [{ id: string }]) => call[0].id
+      // The wrappedApi maps tool.id → name in the call to api.registerTool
+      const registeredNames = mockApi.registerTool.mock.calls.map(
+        (call: [{ name: string }]) => call[0].name
       );
 
-      expect(registeredIds).toContain('myn_tasks');
-      expect(registeredIds).toContain('myn_briefing');
-      expect(registeredIds).toContain('myn_calendar');
-      expect(registeredIds).toContain('myn_habits');
-      expect(registeredIds).toContain('myn_lists');
-      expect(registeredIds).toContain('myn_search');
-      expect(registeredIds).toContain('myn_timers');
-      expect(registeredIds).toContain('myn_memory');
-      expect(registeredIds).toContain('myn_profile');
-      expect(registeredIds).toContain('myn_household');
-      expect(registeredIds).toContain('myn_projects');
-      expect(registeredIds).toContain('myn_planning');
+      expect(registeredNames).toContain('myn_tasks');
+      expect(registeredNames).toContain('myn_briefing');
+      expect(registeredNames).toContain('myn_calendar');
+      expect(registeredNames).toContain('myn_habits');
+      expect(registeredNames).toContain('myn_lists');
+      expect(registeredNames).toContain('myn_search');
+      expect(registeredNames).toContain('myn_timers');
+      expect(registeredNames).toContain('myn_memory');
+      expect(registeredNames).toContain('myn_profile');
+      expect(registeredNames).toContain('myn_household');
+      expect(registeredNames).toContain('myn_projects');
+      expect(registeredNames).toContain('myn_planning');
+      expect(registeredNames).toContain('myn_a2a_pairing');
+      expect(registeredNames).toContain('myn_ynab');
     });
 
-    it('should register tools with names and schemas', async () => {
+    it('should register tools with names, descriptions, schemas, and execute functions', async () => {
       const plugin = await import('../../index.js');
 
-      mockApi.pluginConfig = { apiKey: 'test-key' };
+      mockApi.pluginConfig = { apiKey: 'test-key', baseUrl: 'https://api.mindyournow.com' };
 
       plugin.default.register(mockApi as unknown as OpenClawPluginApi);
 
-      mockApi.registerTool.mock.calls.forEach((call: [{ id: string; name: string; description: string; inputSchema: unknown }]) => {
+      // wrappedApi passes { name, description, parameters, execute } to api.registerTool
+      mockApi.registerTool.mock.calls.forEach((call: [{ name: string; description: string; parameters: unknown; execute: unknown }]) => {
         const tool = call[0];
-        expect(tool).toHaveProperty('id');
         expect(tool).toHaveProperty('name');
         expect(tool).toHaveProperty('description');
-        expect(tool).toHaveProperty('inputSchema');
+        expect(tool).toHaveProperty('parameters');
         expect(tool).toHaveProperty('execute');
         expect(typeof tool.execute).toBe('function');
       });

@@ -17,22 +17,13 @@ describe('myn_habits', () => {
   });
 
   describe('streaks action', () => {
-    it('should get all habit streaks', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({
-          habits: [
-            { habitId: '1', title: 'Exercise', currentStreak: 5, longestStreak: 10, totalCompletions: 50 }
-          ]
-        })
-      });
-
+    it('should require habitId for streaks action', async () => {
+      // No bulk streaks endpoint — habitId required; use schedule action to see all habits
       const result = await executeHabits(client, { action: 'streaks' });
 
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data).toHaveProperty('habits');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('habitId is required');
       }
     });
 

@@ -141,7 +141,11 @@ describe('myn_timers', () => {
     it('should cancel timer', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        status: 204
+        status: 200,
+        json: () => Promise.resolve({
+          timerId: '550e8400-e29b-41d4-a716-446655440000',
+          status: 'cancelled'
+        })
       });
 
       const result = await executeTimers(client, {
@@ -151,7 +155,7 @@ describe('myn_timers', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('cancelled', true);
+        expect(result.data).toHaveProperty('status', 'cancelled');
       }
     });
 

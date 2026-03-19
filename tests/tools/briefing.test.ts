@@ -108,22 +108,17 @@ describe('myn_briefing', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should get specific briefing with id', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({
-          briefingId: 'specific-id',
-          summary: 'Specific briefing'
-        })
-      });
-
+    it('should return error when briefingId is provided (no per-ID endpoint)', async () => {
       const result = await executeBriefing(client, {
         action: 'get',
         briefingId: '550e8400-e29b-41d4-a716-446655440000'
       });
 
-      expect(result.success).toBe(true);
+      // BP7: The backend has no per-ID endpoint — return explicit error
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('not supported');
+      }
     });
   });
 
