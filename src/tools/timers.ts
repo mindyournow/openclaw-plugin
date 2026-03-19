@@ -32,7 +32,12 @@ export const TimersInputSchema = Type.Object({
   breakDuration: Type.Optional(Type.Number({ default: 5, description: 'Break duration in minutes' })),
   longBreakDuration: Type.Optional(Type.Number({ default: 15, description: 'Long break duration in minutes' })),
   sessions: Type.Optional(Type.Number({ default: 4, description: 'Number of pomodoro sessions' })),
-  autoStart: Type.Optional(Type.Boolean({ default: false }))
+  autoStart: Type.Optional(Type.Boolean({ default: false })),
+  // Agent provenance (MIN-785) — include when creating timers so the user can see who created them
+  sourceAgentName: Type.Optional(Type.String({ description: 'Agent identifier, e.g. "OpenClaw/exe.dev"' })),
+  sourceChannel: Type.Optional(Type.String({ description: 'Channel where the request originated, e.g. "slack:#general"' })),
+  sourceModel: Type.Optional(Type.String({ description: 'LLM model making this request, e.g. "openrouter/hunter-alpha"' })),
+  sourceSessionId: Type.Optional(Type.String({ description: 'Session ID for traceability' }))
 });
 
 export type TimersInput = typeof TimersInputSchema.static;
@@ -78,18 +83,23 @@ async function createCountdown(client: MynApiClient, input: TimersInput) {
   }
 
   const body: Record<string, unknown> = {
-    type: 'COUNTDOWN',
-    duration: durationSeconds
+    name: input.label ?? 'Timer',
+    durationSeconds
   };
 
-  if (input.label) body.label = input.label;
+  if (input.sound) body.completionSound = input.sound;
+  // MIN-785: pass agent provenance so the user can see who created this timer
+  if (input.sourceAgentName) body.sourceAgentName = input.sourceAgentName;
+  if (input.sourceChannel) body.sourceChannel = input.sourceChannel;
+  if (input.sourceModel) body.sourceModel = input.sourceModel;
+  if (input.sourceSessionId) body.sourceSessionId = input.sourceSessionId;
 
   const data = await client.post<{
-    timerId: string;
+    id: string;
     type: 'COUNTDOWN';
-    duration: number;
-    endTime: string;
-    label?: string;
+    durationSeconds: number;
+    expirationTime: string;
+    name?: string;
     status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
   }>('/api/v2/timers/countdown', body);
 
@@ -108,6 +118,11 @@ async function createAlarm(client: MynApiClient, input: TimersInput) {
 
   if (input.recurrence) body.recurrence = input.recurrence;
   if (input.sound) body.completionSound = input.sound;
+  // MIN-785: pass agent provenance so the user can see who created this timer
+  if (input.sourceAgentName) body.sourceAgentName = input.sourceAgentName;
+  if (input.sourceChannel) body.sourceChannel = input.sourceChannel;
+  if (input.sourceModel) body.sourceModel = input.sourceModel;
+  if (input.sourceSessionId) body.sourceSessionId = input.sourceSessionId;
 
   const data = await client.post<{
     timerId: string;
