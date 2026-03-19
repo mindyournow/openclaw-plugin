@@ -233,6 +233,81 @@ describe('myn_tasks', () => {
     });
   });
 
+  describe('UUID validation', () => {
+    it('rejects invalid UUID on get action', async () => {
+      const result = await executeTasks(client, {
+        action: 'get',
+        taskId: 'not-a-valid-uuid'
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('taskId');
+      }
+    });
+
+    it('rejects invalid UUID on update action', async () => {
+      const result = await executeTasks(client, {
+        action: 'update',
+        taskId: 'bad-uuid',
+        updates: { title: 'New Title' }
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('taskId');
+      }
+    });
+
+    it('rejects invalid UUID on complete action', async () => {
+      const result = await executeTasks(client, {
+        action: 'complete',
+        taskId: '12345'
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects invalid UUID on archive action', async () => {
+      const result = await executeTasks(client, {
+        action: 'archive',
+        taskId: 'not-uuid'
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ALLOWED_UPDATE_FIELDS allowlist', () => {
+    it('rejects updates containing only sensitive fields', async () => {
+      const result = await executeTasks(client, {
+        action: 'update',
+        taskId: '550e8400-e29b-41d4-a716-446655440000',
+        updates: { ownerId: '999', householdId: '777', isLocked: true }
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('Rejected fields');
+      }
+    });
+
+    it('filters out sensitive fields but passes allowed fields', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ updated: true })
+      });
+
+      const result = await executeTasks(client, {
+        action: 'update',
+        taskId: '550e8400-e29b-41d4-a716-446655440000',
+        updates: { title: 'Safe Title', ownerId: '999' }
+      });
+
+      // Should succeed (title is allowed) and not include ownerId in request
+      expect(result.success).toBe(true);
+      const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(requestBody).toHaveProperty('title', 'Safe Title');
+      expect(requestBody).not.toHaveProperty('ownerId');
+    });
+  });
+
   describe('search action', () => {
     it('should search tasks', async () => {
       mockFetch.mockResolvedValueOnce({

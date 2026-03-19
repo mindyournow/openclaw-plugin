@@ -164,7 +164,7 @@ export async function myn_a2a_pairing(input: MynA2APairingInput, configuredBaseU
             agentInfo: { name: input.agentName ?? 'openclaw', version: '1.0.0' },
             capabilities: caps,
           };
-          checkAndSync(pingData, base, input.agentKey, pingManifest);
+          checkAndSync(pingData, base, input.agentKey, pingManifest, (msg) => console.warn(msg));
         }
 
         return jsonResult(pingData);
@@ -199,7 +199,7 @@ export async function myn_a2a_pairing(input: MynA2APairingInput, configuredBaseU
 
         // Auto-sync capabilities when server signals a hash mismatch — MIN-734
         if (manifest) {
-          checkAndSync(data, base, input.agentKey, manifest);
+          checkAndSync(data, base, input.agentKey, manifest, (msg) => console.warn(msg));
         }
 
         return jsonResult(data);

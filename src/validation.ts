@@ -27,7 +27,8 @@ export function isValidEmail(value: string): boolean {
  * Validate that a UUID field is valid. Returns an error string, or null if valid.
  */
 export function validateUuid(value: string | undefined, fieldName: string): string | null {
-  if (!value) return null; // undefined/empty checked separately
+  if (value === undefined || value === null) return null; // missing is checked separately
+  if (value === '') return `Invalid ${fieldName}: must not be empty`;
   if (!isValidUuid(value)) {
     return `Invalid ${fieldName}: must be a valid UUID (e.g. "550e8400-e29b-41d4-a716-446655440000")`;
   }

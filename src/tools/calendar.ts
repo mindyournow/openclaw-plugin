@@ -131,8 +131,9 @@ async function resolveAttendeesToEmails(
       // BP3: Validate email format before using it
       if (isValidEmail(attendee)) {
         emails.push(attendee);
+      } else {
+        console.warn(`[myn_calendar] Skipping malformed email address: ${attendee}`);
       }
-      // Silently skip malformed email addresses
     } else {
       namesToResolve.push(attendee.toLowerCase());
     }

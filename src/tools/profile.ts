@@ -129,10 +129,10 @@ async function updateGoals(client: MynApiClient, input: ProfileInput) {
   // BP4: Escape user-controlled values to prevent markdown injection.
   const markdown = input.goals.map(g => {
     let line = `- **${escapeMarkdown(g.title)}**`;
-    if (g.status) line += ` [${g.status}]`;
-    if (g.priority) line += ` (${g.priority} priority)`;
+    if (g.status) line += ` [${escapeMarkdown(String(g.status))}]`;
+    if (g.priority) line += ` (${escapeMarkdown(String(g.priority))} priority)`;
     if (g.description) line += `\n  ${escapeMarkdown(g.description)}`;
-    if (g.targetDate) line += `\n  Target: ${g.targetDate}`;
+    if (g.targetDate) line += `\n  Target: ${escapeMarkdown(String(g.targetDate))}`;
     return line;
   }).join('\n');
 

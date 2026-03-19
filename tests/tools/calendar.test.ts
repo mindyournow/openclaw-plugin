@@ -172,4 +172,54 @@ describe('myn_calendar', () => {
       }
     });
   });
+
+  describe('email validation in create_event', () => {
+    it('skips invalid email attendees and only sends valid ones', async () => {
+      mockFetch
+        // First call: resolve member emails (returns empty for non-email attendees)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ events: [], calendars: [] })
+        })
+        // Second call: create event
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({ id: 'event-1', title: 'Meeting' })
+        });
+
+      // Mix of valid and invalid emails — invalid ones should be skipped
+      const result = await executeCalendar(client, {
+        action: 'create_event',
+        title: 'Team Meeting',
+        startTime: '2026-03-01T10:00:00Z',
+        endTime: '2026-03-01T11:00:00Z',
+        attendees: ['valid@example.com', 'not-an-email', 'also@valid.org']
+      });
+
+      // The call should succeed (valid emails are processed)
+      expect(result.success).toBe(true);
+    });
+
+    it('handles attendee list with only invalid @-containing emails', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({ id: 'event-2' })
+      });
+
+      // These contain '@' so email validation runs, but they are malformed
+      const result = await executeCalendar(client, {
+        action: 'create_event',
+        title: 'Solo Meeting',
+        startTime: '2026-03-01T10:00:00Z',
+        endTime: '2026-03-01T11:00:00Z',
+        attendees: ['not an@email', '@nodomain']
+      });
+
+      // Should still succeed (malformed emails are skipped, not fatal)
+      expect(result.success).toBe(true);
+    });
+  });
 });

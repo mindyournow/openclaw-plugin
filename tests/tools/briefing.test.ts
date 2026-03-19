@@ -154,6 +154,31 @@ describe('myn_briefing', () => {
     });
   });
 
+  describe('get action — briefingId rejection (BP7)', () => {
+    it('should return an error when briefingId is provided', async () => {
+      const result = await executeBriefing(client, {
+        action: 'get',
+        briefingId: '550e8400-e29b-41d4-a716-446655440000'
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('not supported');
+      }
+    });
+
+    it('should succeed (fetch current) when no briefingId is provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: 'b1', tasks: [] })
+      });
+
+      const result = await executeBriefing(client, { action: 'get' });
+      expect(result.success).toBe(true);
+    });
+  });
+
   describe('complete_session action', () => {
     it('should complete session with summary', async () => {
       mockFetch.mockResolvedValueOnce({
