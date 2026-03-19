@@ -122,6 +122,12 @@ describe('myn_calendar', () => {
 
   describe('delete_event action', () => {
     it('should delete event', async () => {
+      // guardedDelete: GET (stateHash read) + DELETE (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ eventId: 'event-123', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 204

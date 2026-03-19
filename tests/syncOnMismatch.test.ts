@@ -92,6 +92,26 @@ describe('checkAndSync', () => {
     warnSpy.mockRestore();
   });
 
+  it('calls onError callback instead of console.warn when sync fails and onError is provided', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: async () => 'Service Unavailable',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const onError = vi.fn();
+    checkAndSync({ capabilityUpdatePending: true }, 'https://api.example.com', 'key-err', MANIFEST, onError);
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toContain('[syncOnMismatch] Capability sync failed:');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it('dedup guard prevents duplicate syncs for the same agent key', async () => {
     // Slow fetch so the first sync is still in-flight when the second fires
     let resolveFirst!: () => void;
@@ -152,6 +172,32 @@ describe('withSyncOnMismatch', () => {
 
     await new Promise(resolve => setTimeout(resolve, 10));
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onError callback instead of console.warn when sync fails and onError is provided', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: async () => 'Service Unavailable',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const onError = vi.fn();
+    await withSyncOnMismatch(
+      async () => ({ status: 'ok', capabilityUpdatePending: true }),
+      'https://api.example.com',
+      'key-err2',
+      MANIFEST,
+      onError,
+    );
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toContain('[syncOnMismatch] Capability sync failed:');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('does not trigger sync when capabilityUpdatePending is false', async () => {

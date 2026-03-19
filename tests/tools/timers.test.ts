@@ -139,6 +139,12 @@ describe('myn_timers', () => {
 
   describe('cancel action', () => {
     it('should cancel timer', async () => {
+      // guardedPost: GET (stateHash read) + POST (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ timerId: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -168,6 +174,12 @@ describe('myn_timers', () => {
 
   describe('snooze action', () => {
     it('should snooze timer with default minutes', async () => {
+      // guardedPost: GET (stateHash read) + POST (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ timerId: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -187,6 +199,12 @@ describe('myn_timers', () => {
     });
 
     it('should snooze timer with custom minutes', async () => {
+      // guardedPost: GET (stateHash read) + POST (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ timerId: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,

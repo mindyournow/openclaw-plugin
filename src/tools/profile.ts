@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPut } from '../client.js';
 import { escapeMarkdown } from '../validation.js';
 
 export const ProfileInputSchema = Type.Object({
@@ -136,10 +136,11 @@ async function updateGoals(client: MynApiClient, input: ProfileInput) {
     return line;
   }).join('\n');
 
-  const data = await client.put<{
+  // MIN-740: read-before-write — reads goals first to get stateHash, retries on 409
+  const data = await guardedPut<{
     status: string;
     message: string;
-  }>('/api/v1/customers/goals', { goalsAndAmbitions: markdown });
+  }>(client, '/api/v1/customers/goals', { goalsAndAmbitions: markdown }, '/api/v1/customers/goals');
 
   return jsonResult(data);
 }

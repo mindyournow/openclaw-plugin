@@ -7,7 +7,7 @@
 
 import { MynApiClient } from './src/client.js';
 import { registerTasksTool } from './src/tools/tasks.js';
-import { registerBriefingTool } from './src/tools/briefing.js';
+import { registerDebriefTool } from './src/tools/debrief.js';
 import { registerCalendarTool } from './src/tools/calendar.js';
 import { registerHabitsTool } from './src/tools/habits.js';
 import { registerListsTool } from './src/tools/lists.js';
@@ -158,7 +158,7 @@ export default {
 
     // Register all 13 tools
     registerTasksTool(wrappedApi, client);
-    registerBriefingTool(wrappedApi, client);
+    registerDebriefTool(wrappedApi, client);
     registerCalendarTool(wrappedApi, client);
     registerHabitsTool(wrappedApi, client);
     registerListsTool(wrappedApi, client);
@@ -172,7 +172,7 @@ export default {
     registerA2APairingTool(wrappedApi, baseUrl);
     registerYnabTool(wrappedApi, client);
 
-    api.logger.info('[myn] Registered 14 tools: tasks, briefing, calendar, habits, lists, search, timers, memory, profile, household, projects, planning, a2a_pairing, ynab');
+    api.logger.info('[myn] Registered 14 tools: tasks, debrief, calendar, habits, lists, search, timers, memory, profile, household, projects, planning, a2a_pairing, ynab');
   }
 };
 
@@ -182,7 +182,7 @@ export type { MynApiClientOptions } from './src/client.js';
 
 // Re-export tool schemas for programmatic use
 export { TasksInputSchema } from './src/tools/tasks.js';
-export { BriefingInputSchema } from './src/tools/briefing.js';
+export { DebriefInputSchema } from './src/tools/debrief.js';
 export { CalendarInputSchema } from './src/tools/calendar.js';
 export { HabitsInputSchema } from './src/tools/habits.js';
 export { ListsInputSchema } from './src/tools/lists.js';
@@ -198,7 +198,7 @@ export { YnabInputSchema } from './src/tools/ynab.js';
 
 // Type-only exports
 export type { TasksInput } from './src/tools/tasks.js';
-export type { BriefingInput } from './src/tools/briefing.js';
+export type { DebriefInput } from './src/tools/debrief.js';
 export type { CalendarInput } from './src/tools/calendar.js';
 export type { HabitsInput } from './src/tools/habits.js';
 export type { ListsInput } from './src/tools/lists.js';

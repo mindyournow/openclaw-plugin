@@ -1,12 +1,12 @@
 /**
- * Tests for myn_briefing tool
+ * Tests for myn_debrief tool
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeBriefing } from '../../src/tools/briefing.js';
+import { executeDebrief } from '../../src/tools/debrief.js';
 import { MynApiClient } from '../../src/client.js';
 
-describe('myn_briefing', () => {
+describe('myn_debrief', () => {
   const mockFetch = vi.fn();
   let client: MynApiClient;
 
@@ -27,7 +27,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, { action: 'status' });
+      const result = await executeDebrief(client, { action: 'status' });
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -42,7 +42,7 @@ describe('myn_briefing', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'brief-123',
+          debriefId: 'brief-123',
           sessionId: 'session-456',
           summary: 'Your morning briefing',
           criticalNow: [],
@@ -55,7 +55,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'generate',
         context: 'Morning planning session',
         focusAreas: ['work', 'health']
@@ -63,7 +63,7 @@ describe('myn_briefing', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('briefingId');
+        expect(result.data).toHaveProperty('debriefId');
         expect(result.data).toHaveProperty('criticalNow');
       }
     });
@@ -73,7 +73,7 @@ describe('myn_briefing', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'brief-123',
+          debriefId: 'brief-123',
           sessionId: 'session-456',
           summary: 'Briefing',
           criticalNow: [],
@@ -86,7 +86,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, { action: 'generate' });
+      const result = await executeDebrief(client, { action: 'generate' });
 
       expect(result.success).toBe(true);
     });
@@ -98,32 +98,43 @@ describe('myn_briefing', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          briefingId: 'latest',
+          debriefId: 'latest',
           summary: 'Latest briefing'
         })
       });
 
-      const result = await executeBriefing(client, { action: 'get' });
+      const result = await executeDebrief(client, { action: 'get' });
 
       expect(result.success).toBe(true);
     });
 
-    it('should return error when briefingId is provided (no per-ID endpoint)', async () => {
-      const result = await executeBriefing(client, {
-        action: 'get',
-        briefingId: '550e8400-e29b-41d4-a716-446655440000'
+    it('should get specific briefing with id', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          debriefId: 'specific-id',
+          summary: 'Specific briefing'
+        })
       });
 
-      // BP7: The backend has no per-ID endpoint — return explicit error
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('not supported');
-      }
+      const result = await executeDebrief(client, {
+        action: 'get',
+        debriefId: '550e8400-e29b-41d4-a716-446655440000'
+      });
+
+      expect(result.success).toBe(true);
     });
   });
 
   describe('apply_correction action', () => {
     it('should apply correction', async () => {
+      // guardedPost: GET /api/v2/debrief/current (stateHash read) + POST (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ sessionId: 'session-456', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -134,7 +145,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'apply_correction',
         correctionType: 'TASK_COMPLETED',
         correctionData: { taskId: 'task-123' },
@@ -145,7 +156,7 @@ describe('myn_briefing', () => {
     });
 
     it('should return error if correctionType missing', async () => {
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'apply_correction',
         correctionData: { taskId: 'task-123' }
       });
@@ -154,33 +165,14 @@ describe('myn_briefing', () => {
     });
   });
 
-  describe('get action — briefingId rejection (BP7)', () => {
-    it('should return an error when briefingId is provided', async () => {
-      const result = await executeBriefing(client, {
-        action: 'get',
-        briefingId: '550e8400-e29b-41d4-a716-446655440000'
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('not supported');
-      }
-    });
-
-    it('should succeed (fetch current) when no briefingId is provided', async () => {
+  describe('complete_session action', () => {
+    it('should complete session with summary', async () => {
+      // guardedPost: GET /api/v2/debrief/current (stateHash read) + POST (write)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ id: 'b1', tasks: [] })
+        json: () => Promise.resolve({ sessionId: 'session-current', stateHash: 'abc123' })
       });
-
-      const result = await executeBriefing(client, { action: 'get' });
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe('complete_session action', () => {
-    it('should complete session with summary', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -191,7 +183,7 @@ describe('myn_briefing', () => {
         })
       });
 
-      const result = await executeBriefing(client, {
+      const result = await executeDebrief(client, {
         action: 'complete_session',
         sessionSummary: 'Planned the day successfully',
         decisions: ['Focus on project X', 'Defer meeting Y']

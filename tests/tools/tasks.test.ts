@@ -168,6 +168,12 @@ describe('myn_tasks', () => {
 
   describe('update action', () => {
     it('should update task with updates object', async () => {
+      // guardedPatch: GET (stateHash read) + PATCH (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -195,6 +201,12 @@ describe('myn_tasks', () => {
 
   describe('complete action', () => {
     it('should complete task', async () => {
+      // guardedPost: GET (stateHash read) + POST (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -218,6 +230,12 @@ describe('myn_tasks', () => {
 
   describe('archive action', () => {
     it('should archive task', async () => {
+      // guardedPost: GET (stateHash read) + POST (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -288,6 +306,12 @@ describe('myn_tasks', () => {
     });
 
     it('filters out sensitive fields but passes allowed fields', async () => {
+      // guardedPatch: GET (stateHash read) + PATCH (write)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -302,7 +326,8 @@ describe('myn_tasks', () => {
 
       // Should succeed (title is allowed) and not include ownerId in request
       expect(result.success).toBe(true);
-      const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      // calls[0] is the GET (stateHash read), calls[1] is the PATCH (write)
+      const requestBody = JSON.parse(mockFetch.mock.calls[1][1].body);
       expect(requestBody).toHaveProperty('title', 'Safe Title');
       expect(requestBody).not.toHaveProperty('ownerId');
     });

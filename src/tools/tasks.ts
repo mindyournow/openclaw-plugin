@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPatch, guardedPost } from '../client.js';
 import { validateUuid } from '../validation.js';
 
 // Schema definitions
@@ -189,7 +189,7 @@ async function updateTask(client: MynApiClient, input: TasksInput) {
     return errorResult('updates object is required for update action');
   }
 
-  // Filter updates to only allowed fields
+  // W2: Filter updates to only allowed fields (mass assignment prevention)
   const filteredUpdates: Record<string, unknown> = {};
   const rejectedFields: string[] = [];
   for (const [key, value] of Object.entries(input.updates)) {
@@ -207,7 +207,13 @@ async function updateTask(client: MynApiClient, input: TasksInput) {
     );
   }
 
-  const data = await client.patch<unknown>(`/api/v2/unified-tasks/${input.taskId}`, filteredUpdates);
+  // MIN-740: read-before-write — automatically reads current stateHash, retries on 409
+  const data = await guardedPatch<unknown>(
+    client,
+    `/api/v2/unified-tasks/${input.taskId}`,
+    filteredUpdates,
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
   return jsonResult(data);
 }
 
@@ -218,7 +224,13 @@ async function completeTask(client: MynApiClient, input: TasksInput) {
   const uuidErr = validateUuid(input.taskId, 'taskId');
   if (uuidErr) return errorResult(uuidErr);
 
-  const data = await client.post<unknown>(`/api/v2/unified-tasks/${input.taskId}/complete`, {});
+  // MIN-740: read-before-write — reads task first to get stateHash
+  const data = await guardedPost<unknown>(
+    client,
+    `/api/v2/unified-tasks/${input.taskId}/complete`,
+    {},
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
   return jsonResult(data);
 }
 
@@ -229,7 +241,13 @@ async function archiveTask(client: MynApiClient, input: TasksInput) {
   const uuidErr = validateUuid(input.taskId, 'taskId');
   if (uuidErr) return errorResult(uuidErr);
 
-  const data = await client.post<unknown>(`/api/v2/unified-tasks/${input.taskId}/archive`, {});
+  // MIN-740: read-before-write — reads task first to get stateHash
+  const data = await guardedPost<unknown>(
+    client,
+    `/api/v2/unified-tasks/${input.taskId}/archive`,
+    {},
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
   return jsonResult(data);
 }
 

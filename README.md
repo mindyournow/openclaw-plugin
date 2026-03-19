@@ -74,8 +74,8 @@ startDate: "2026-03-01"
 duration: "2h"
 ```
 
-### myn_briefing
-Generate and manage Compass briefings.
+### myn_debrief
+Generate and manage Daily Debrief sessions.
 
 ```yaml
 action: status | generate | get | apply_correction | complete_session
@@ -83,7 +83,7 @@ action: status | generate | get | apply_correction | complete_session
 
 **Examples:**
 ```yaml
-# Generate morning briefing
+# Generate morning debrief
 action: generate
 context: "Morning planning session"
 focusAreas:
@@ -238,7 +238,7 @@ When creating tasks, you MUST provide:
 
 This plugin includes a companion skill at `skills/myn/SKILL.md` that teaches agents MYN workflow patterns including:
 
-- The morning routine (Compass briefing)
+- The morning routine (Daily Debrief)
 - Task creation best practices
 - Priority management
 - Common workflows
