@@ -125,12 +125,11 @@ async function createAlarm(client: MynApiClient, input: TimersInput) {
   if (input.sourceSessionId) body.sourceSessionId = input.sourceSessionId;
 
   const data = await client.post<{
-    timerId: string;
+    id: string;
     type: 'ALARM';
     alarmTime: string;
-    label?: string;
-    recurrence?: string;
-    status: 'ACTIVE' | 'TRIGGERED' | 'SNOOZED';
+    name?: string;
+    status: 'ACTIVE' | 'SNOOZED' | 'COMPLETED' | 'CANCELLED';
   }>('/api/v2/timers/alarm', body);
 
   return jsonResult(data);

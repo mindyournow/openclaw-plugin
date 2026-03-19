@@ -267,4 +267,91 @@ describe('myn_timers', () => {
       expect(result.success).toBe(true);
     });
   });
+
+  // ==================== MIN-785: Agent provenance passthrough ====================
+
+  describe('agent provenance (MIN-785)', () => {
+    it('should pass provenance fields in countdown request body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({
+          id: 'timer-456',
+          type: 'COUNTDOWN',
+          durationSeconds: 1800,
+          status: 'ACTIVE'
+        })
+      });
+
+      await executeTimers(client, {
+        action: 'create_countdown',
+        durationMinutes: 30,
+        label: 'Focus',
+        sourceAgentName: 'OpenClaw/exe.dev',
+        sourceChannel: 'slack:#finance',
+        sourceModel: 'openrouter/hunter-alpha',
+        sourceSessionId: 'sess_abc123'
+      });
+
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string);
+      expect(body.sourceAgentName).toBe('OpenClaw/exe.dev');
+      expect(body.sourceChannel).toBe('slack:#finance');
+      expect(body.sourceModel).toBe('openrouter/hunter-alpha');
+      expect(body.sourceSessionId).toBe('sess_abc123');
+    });
+
+    it('should pass provenance fields in alarm request body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({
+          id: 'alarm-789',
+          type: 'ALARM',
+          alarmTime: '2026-03-20T08:00:00Z',
+          status: 'ACTIVE'
+        })
+      });
+
+      await executeTimers(client, {
+        action: 'create_alarm',
+        alarmTime: '2026-03-20T08:00:00Z',
+        label: 'Dave App payback due today',
+        sourceAgentName: 'OpenClaw/exe.dev',
+        sourceChannel: 'telegram',
+        sourceSessionId: 'sess_xyz'
+      });
+
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string);
+      expect(body.sourceAgentName).toBe('OpenClaw/exe.dev');
+      expect(body.sourceChannel).toBe('telegram');
+      expect(body.sourceSessionId).toBe('sess_xyz');
+      // sourceModel not provided — should not be in body
+      expect(body.sourceModel).toBeUndefined();
+    });
+
+    it('should omit provenance fields when not provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({ id: 'timer-no-prov', type: 'COUNTDOWN', status: 'ACTIVE' })
+      });
+
+      await executeTimers(client, {
+        action: 'create_countdown',
+        duration: 600,
+        label: 'Quick timer'
+      });
+
+      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string);
+      expect(body.sourceAgentName).toBeUndefined();
+      expect(body.sourceChannel).toBeUndefined();
+      expect(body.sourceModel).toBeUndefined();
+      expect(body.sourceSessionId).toBeUndefined();
+    });
+  });
 });
