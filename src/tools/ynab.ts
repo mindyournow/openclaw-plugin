@@ -105,7 +105,7 @@ export const YnabInputSchema = Type.Object({
       accountId: Type.String({ description: 'YNAB account ID.' }),
       payeeName: Type.String({ description: 'Payee name.' }),
       amount: Type.Number({ description: 'Amount in dollars. Negative for expenses.' }),
-      categoryName: Type.Optional(Type.String({ description: 'Category name (fuzzy match).' })),
+      categoryName: Type.String({ description: 'Category name (fuzzy match). REQUIRED — use list_categories to find it.' }),
       date: Type.Optional(Type.String({ description: 'Date YYYY-MM-DD. Defaults to today.' })),
       memo: Type.Optional(Type.String({ description: 'Optional memo.' }))
     }),
@@ -381,6 +381,16 @@ async function createTransaction(client: MynApiClient, input: YnabInput) {
   }
 
   const amountMilliunits = Math.round(input.amount * 1000);
+  const isTransfer = !!(payeeId || input.transferToAccount);
+
+  // HARD REQUIREMENT: categoryName is mandatory for non-transfer transactions.
+  // This prevents uncategorized transactions that show "This needs a category" in YNAB.
+  if (!input.categoryName && !isTransfer) {
+    return errorResult(
+      'categoryName is REQUIRED for create_transaction. Use list_categories to find the right category first. ' +
+      'Only transfers (using transferToAccount) are exempt from this requirement.'
+    );
+  }
 
   let categoryId: string | undefined;
   if (input.categoryName) {
@@ -391,10 +401,32 @@ async function createTransaction(client: MynApiClient, input: YnabInput) {
     categoryId = resolved;
   }
 
+  // DUPLICATE DETECTION: Check for existing transactions with the same amount and date
+  // to prevent duplicates when bank sync also imports the transaction.
+  const txnDate = input.date || today();
+  try {
+    const existing = await client.get<{ transactions: Array<{ amount: number; date: string; payee_name: string; deleted: boolean }> }>(
+      `/api/v1/ynab/transactions?sinceDate=${txnDate}`
+    );
+    const dupes = (existing?.transactions ?? []).filter(t =>
+      !t.deleted && t.amount === amountMilliunits && t.date === txnDate
+    );
+    if (dupes.length > 0) {
+      const dupeInfo = dupes.map(d => `${d.payee_name} ${d.amount / 1000}`).join(', ');
+      return errorResult(
+        `DUPLICATE WARNING: ${dupes.length} existing transaction(s) found with the same amount ($${input.amount}) on ${txnDate}: [${dupeInfo}]. ` +
+        'The bank may have already imported this transaction. Verify with list_transactions before creating. ' +
+        'If you are certain this is not a duplicate, use create_transactions_bulk with a single entry to bypass this check.'
+      );
+    }
+  } catch {
+    // Non-fatal: proceed if duplicate check fails
+  }
+
   const body: Record<string, unknown> = {
     accountId: input.accountId,
     amountMilliunits,
-    date: input.date || today()
+    date: txnDate
   };
   if (payeeId) body.payeeId = payeeId;
   if (!payeeId && input.payeeName) body.payeeName = input.payeeName;
@@ -414,25 +446,28 @@ async function createTransactionsBulk(client: MynApiClient, input: YnabInput) {
   // Resolve category names and convert amounts for all transactions
   const resolved = [];
   for (const txn of input.transactions) {
+    // HARD REQUIREMENT: categoryName is mandatory for each bulk transaction
+    if (!txn.categoryName) {
+      return errorResult(
+        `categoryName is REQUIRED for transaction "${txn.payeeName}". Use list_categories to find the right category first.`
+      );
+    }
+
     const amountMilliunits = Math.round(txn.amount * 1000);
 
-    let categoryId: string | undefined;
-    if (txn.categoryName) {
-      const id = await resolveCategoryId(client, txn.categoryName);
-      if (!id) {
-        return errorResult(`Category '${txn.categoryName}' not found for transaction "${txn.payeeName}". Use list_categories to browse.`);
-      }
-      categoryId = id;
+    const id = await resolveCategoryId(client, txn.categoryName);
+    if (!id) {
+      return errorResult(`Category '${txn.categoryName}' not found for transaction "${txn.payeeName}". Use list_categories to browse.`);
     }
 
     const entry: Record<string, unknown> = {
       accountId: txn.accountId,
       payeeName: txn.payeeName,
       amount: amountMilliunits,
-      date: txn.date || today()
+      date: txn.date || today(),
+      categoryId: id
     };
     if (txn.memo) entry.memo = txn.memo;
-    if (categoryId) entry.categoryId = categoryId;
     resolved.push(entry);
   }
 
@@ -769,7 +804,8 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
       'Connection: connection_status.',
       'Category Management: create_category_group, create_category, rename_category, move_category (to different group), rename_category_group.',
       'Amounts in dollars (negative=expense). Categories resolved by name (fuzzy match).',
-      'CATEGORIZATION: When creating transactions, ALWAYS call list_categories first to find the most relevant category. Do NOT guess common names like "Groceries" — look at what categories actually exist. If no existing category fits well, suggest creating a new one with create_category. Consider the payee and items to pick the right category (e.g., Dollar General selling cigarettes should use "Cigarettes" not "Groceries"). For mixed purchases, consider split_transaction.',
+      'CATEGORIZATION: categoryName is REQUIRED for all transactions (enforced by code). ALWAYS call list_categories first to find the most relevant category. Do NOT guess common names like "Groceries" — look at what categories actually exist. If no existing category fits well, suggest creating a new one with create_category. Consider the payee and items to pick the right category (e.g., Dollar General selling cigarettes should use "Cigarettes" not "Groceries"). For mixed purchases, consider split_transaction.',
+      'DUPLICATE PREVENTION: Bank-connected accounts auto-import transactions. If you manually create a transaction that the bank also imports, it creates a DUPLICATE that throws off the balance. Before creating: (1) check list_transactions to see if it already exists, (2) create_transaction will reject if a same-amount same-date transaction exists. Only create transactions for manual/cash entries or when you are certain the bank will NOT import it.',
       'CREDIT CARD TIPS: Credit card payment categories track "Available for Payment" which accumulates from budgeted spending on those cards. To zero out/remove available balance from a CC payment category, use set_budget_amount with a NEGATIVE amount (e.g., -76.51 to pull $76.51 out). Setting budget to 0 does NOT remove existing available balance. To move money between categories, negative-budget the source and positive-budget the destination. Always just do what the user asks — don\'t ask for confirmation on straightforward budget operations.'
     ].join(' '),
     inputSchema: YnabInputSchema,

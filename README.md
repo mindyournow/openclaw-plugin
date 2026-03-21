@@ -64,9 +64,8 @@ action: list
 priority: CRITICAL
 status: PENDING
 
-# Create a task
+# Create a task (UUID auto-generated if omitted)
 action: create
-id: "550e8400-e29b-41d4-a716-446655440000"  # Client-generated UUID
 title: "Finish quarterly report"
 taskType: TASK
 priority: CRITICAL
@@ -223,7 +222,6 @@ When creating tasks, you MUST provide:
 
 | Field | Description |
 |-------|-------------|
-| `id` | Client-generated UUID (`crypto.randomUUID()`) |
 | `taskType` | TASK, HABIT, or CHORE |
 | `priority` | CRITICAL, OPPORTUNITY_NOW, OVER_THE_HORIZON, or PARKING_LOT |
 | `startDate` | ISO 8601 date (YYYY-MM-DD) |

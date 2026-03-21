@@ -34,7 +34,7 @@ Use these OpenClaw tool names instead of raw REST calls:
 
 ### Task Creation (Required Fields)
 
-Every `myn_tasks create` call needs: `id` (UUID), `title`, `taskType`, `priority`, `startDate`.
+Every `myn_tasks create` call needs: `title`, `taskType`, `priority`, `startDate`. A UUID is auto-generated — do NOT supply `id`.
 
 ### Morning Routine
 

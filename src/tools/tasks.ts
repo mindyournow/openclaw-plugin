@@ -54,7 +54,7 @@ export const TasksInputSchema = Type.Object({
   taskType: Type.Optional(TaskTypeSchema),
   duration: Type.Optional(Type.String()), // "30m", "1h", "1h30m"
   // Create specific
-  id: Type.Optional(Type.String({ format: 'uuid' })), // Client-generated UUID
+  id: Type.Optional(Type.String({ format: 'uuid' })), // Auto-generated if omitted — do NOT hallucinate UUIDs
   recurrenceRule: Type.Optional(Type.String()), // For HABIT/CHORE types
   isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system. Use this field name, NOT autoScheduleEnabled.' })),
   autoScheduleEnabled: Type.Optional(Type.Boolean({ description: 'DEPRECATED alias for isAutoScheduled. Prefer isAutoScheduled.' })),
@@ -138,12 +138,11 @@ async function createTask(client: MynApiClient, input: TasksInput) {
   if (!input.startDate) {
     return errorResult('startDate is required for create action');
   }
-  if (!input.id) {
-    return errorResult('id (client-generated UUID) is required for create action');
-  }
+  // Auto-generate UUID if the caller didn't provide one (LLMs hallucinate bad UUIDs)
+  const taskId = input.id || crypto.randomUUID();
 
   const body: Record<string, unknown> = {
-    id: input.id,
+    id: taskId,
     title: input.title,
     taskType: input.taskType,
     priority: input.priority,

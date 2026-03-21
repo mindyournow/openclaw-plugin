@@ -105,6 +105,27 @@ describe('myn_tasks', () => {
       expect(result.success).toBe(true);
     });
 
+    it('should auto-generate UUID when id is omitted', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({ id: 'auto-generated', created: true })
+      });
+
+      const result = await executeTasks(client, {
+        action: 'create',
+        title: 'Task Without ID',
+        taskType: 'TASK',
+        priority: 'OPPORTUNITY_NOW',
+        startDate: '2026-03-01'
+      });
+
+      expect(result.success).toBe(true);
+      // Verify the POST body contained an auto-generated UUID
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    });
+
     it('should return error if title missing', async () => {
       const result = await executeTasks(client, {
         action: 'create',
