@@ -76,7 +76,7 @@ async function getList(client: MynApiClient, input: ListsInput) {
   }
 
   const data = await client.get<{
-    householdId: string;
+    success: boolean;
     items: Array<{
       id: string;
       name: string;
@@ -85,10 +85,13 @@ async function getList(client: MynApiClient, input: ListsInput) {
       notes?: string;
       checked: boolean;
       addedAt: string;
-      addedBy: string;
+      addedBy: number;
+      addedByName?: string;
+      position: number;
+      householdId: string;
+      createdAt: string;
+      updatedAt: string;
     }>;
-    categories: string[];
-    lastModified: string;
   }>(`/api/v1/households/${householdId}/grocery-list`);
 
   return jsonResult(data);
@@ -118,8 +121,17 @@ async function addItem(client: MynApiClient, input: ListsInput) {
   if (input.notes) body.notes = input.notes;
 
   const data = await client.post<{
-    itemId: string;
-    added: boolean;
+    success: boolean;
+    item: {
+      id: string;
+      name: string;
+      category?: string;
+      quantity?: string;
+      notes?: string;
+      checked: boolean;
+      addedAt: string;
+      addedByName?: string;
+    };
   }>(`/api/v1/households/${householdId}/grocery-list`, body);
 
   return jsonResult(data);
@@ -140,13 +152,15 @@ async function toggleItem(client: MynApiClient, input: ListsInput) {
     householdId = household.id;
   }
 
-  const body: Record<string, unknown> = {};
-  if (input.checked !== undefined) body.checked = input.checked;
-
   const data = await client.patch<{
-    itemId: string;
+    success: boolean;
+    item: {
+      id: string;
+      name: string;
+      checked: boolean;
+    };
     checked: boolean;
-  }>(`/api/v1/households/${householdId}/grocery-list/${input.itemId}/toggle`, body);
+  }>(`/api/v1/households/${householdId}/grocery-list/${input.itemId}/toggle`, {});
 
   return jsonResult(data);
 }
@@ -166,17 +180,25 @@ async function bulkAddItems(client: MynApiClient, input: ListsInput) {
     householdId = household.id;
   }
 
+  // Build structured item entries with per-item category/quantity if provided
   const body: Record<string, unknown> = {
     items: input.items.map(item => ({
       name: item,
-      category: input.category,
-      quantity: input.quantity
+      ...(input.category && { category: input.category }),
+      ...(input.quantity && { quantity: input.quantity })
     }))
   };
 
   const data = await client.post<{
-    addedCount: number;
-    itemIds: string[];
+    success: boolean;
+    items: Array<{
+      id: string;
+      name: string;
+      category?: string;
+      quantity?: string;
+      checked: boolean;
+    }>;
+    count: number;
   }>(`/api/v1/households/${householdId}/grocery-list/bulk`, body);
 
   return jsonResult(data);
@@ -200,8 +222,12 @@ async function convertToTasks(client: MynApiClient, input: ListsInput) {
   if (input.priority) body.priority = input.priority;
 
   const data = await client.post<{
-    convertedCount: number;
-    taskIds: string[];
+    success: boolean;
+    tasks: Array<{
+      id: string;
+      title: string;
+    }>;
+    count: number;
   }>(`/api/v1/households/${householdId}/grocery-list/convert-to-tasks`, body);
 
   return jsonResult(data);
