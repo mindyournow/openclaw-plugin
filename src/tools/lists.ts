@@ -12,6 +12,9 @@ export const ListsInputSchema = Type.Object({
     Type.Literal('add'),
     Type.Literal('toggle'),
     Type.Literal('bulk_add'),
+    Type.Literal('update'),
+    Type.Literal('delete'),
+    Type.Literal('delete_checked'),
     Type.Literal('convert_to_tasks')
   ]),
   // Common parameters
@@ -51,6 +54,12 @@ export async function executeLists(
         return await toggleItem(client, input);
       case 'bulk_add':
         return await bulkAddItems(client, input);
+      case 'update':
+        return await updateItem(client, input);
+      case 'delete':
+        return await deleteItem(client, input);
+      case 'delete_checked':
+        return await deleteCheckedItems(client, input);
       case 'convert_to_tasks':
         return await convertToTasks(client, input);
       default:
@@ -204,6 +213,86 @@ async function bulkAddItems(client: MynApiClient, input: ListsInput) {
   return jsonResult(data);
 }
 
+async function updateItem(client: MynApiClient, input: ListsInput) {
+  if (!input.itemId) {
+    return errorResult('itemId is required for update action');
+  }
+
+  let householdId = input.householdId;
+  if (!householdId) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
+      return errorResult('No household found. Please specify householdId.');
+    }
+    householdId = household.id;
+  }
+
+  const body: Record<string, unknown> = {};
+  if (input.item) body.name = input.item;
+  if (input.category) body.category = input.category;
+  if (input.quantity) body.quantity = input.quantity;
+  if (input.notes) body.notes = input.notes;
+
+  if (Object.keys(body).length === 0) {
+    return errorResult('At least one field (item, category, quantity, notes) is required for update');
+  }
+
+  const data = await client.patch<{
+    success: boolean;
+    item: {
+      id: string;
+      name: string;
+      category?: string;
+      quantity?: string;
+      notes?: string;
+      checked: boolean;
+    };
+  }>(`/api/v1/households/${householdId}/grocery-list/${input.itemId}`, body);
+
+  return jsonResult(data);
+}
+
+async function deleteItem(client: MynApiClient, input: ListsInput) {
+  if (!input.itemId) {
+    return errorResult('itemId is required for delete action');
+  }
+
+  let householdId = input.householdId;
+  if (!householdId) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
+      return errorResult('No household found. Please specify householdId.');
+    }
+    householdId = household.id;
+  }
+
+  const data = await client.delete<{
+    success: boolean;
+    deleted: boolean;
+  }>(`/api/v1/households/${householdId}/grocery-list/${input.itemId}`);
+
+  return jsonResult(data);
+}
+
+async function deleteCheckedItems(client: MynApiClient, input: ListsInput) {
+  let householdId = input.householdId;
+  if (!householdId) {
+    const household = await client.get<{ id: string }>('/api/v1/households/current');
+    if (!household?.id) {
+      return errorResult('No household found. Please specify householdId.');
+    }
+    householdId = household.id;
+  }
+
+  const data = await client.delete<{
+    success: boolean;
+    deletedCount: number;
+    undoAvailable: boolean;
+  }>(`/api/v1/households/${householdId}/grocery-list/checked`);
+
+  return jsonResult(data);
+}
+
 async function convertToTasks(client: MynApiClient, input: ListsInput) {
   // Get household ID if not provided
   let householdId = input.householdId;
@@ -237,7 +326,7 @@ export function registerListsTool(api: OpenClawPluginApi, client: MynApiClient):
   api.registerTool({
     id: 'myn_lists',
     name: 'MYN Lists',
-    description: 'Manage grocery and shopping lists. Actions: get, add, toggle, bulk_add, convert_to_tasks.',
+    description: 'Manage grocery and shopping lists. Actions: get, add, update, toggle, delete, delete_checked, bulk_add, convert_to_tasks.',
     inputSchema: ListsInputSchema,
     async execute(input: unknown) {
       return executeLists(client, input as ListsInput);
