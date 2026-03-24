@@ -2,10 +2,12 @@
  * Mind Your Now - OpenClaw Plugin
  * @mind-your-now/myn
  *
- * Main entry point that registers all 14 MYN tools with the OpenClaw agent.
+ * Main entry point that registers all 14 MYN tools with the OpenClaw agent
+ * and injects Kaia's memories into the conversation via before_prompt_build hook.
  */
 
 import { MynApiClient } from './src/client.js';
+import { fetchMemoryContext, formatMemoriesForPrompt } from './src/memory-context.js';
 import { registerTasksTool } from './src/tools/tasks.js';
 import { registerDebriefTool } from './src/tools/debrief.js';
 import { registerCalendarTool } from './src/tools/calendar.js';
@@ -31,6 +33,8 @@ export interface ToolDefinition {
 
 export interface OpenClawPluginApi {
   registerTool(tool: ToolDefinition): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(hookName: string, handler: (...args: any[]) => any, opts?: { priority?: number }): void;
   logger: {
     debug(message: string): void;
     info(message: string): void;
@@ -173,6 +177,22 @@ export default {
     registerYnabTool(wrappedApi, client);
 
     api.logger.info('[myn] Registered 14 tools: tasks, debrief, calendar, habits, lists, search, timers, memory, profile, household, projects, planning, a2a_pairing, ynab');
+
+    // MIN-801: Inject Kaia's memories into every conversation turn
+    api.on('before_prompt_build', async (event: { prompt: string }) => {
+      try {
+        const memories = await fetchMemoryContext(client, event.prompt);
+        if (!memories) return;
+        const context = formatMemoriesForPrompt(memories);
+        if (!context) return;
+        return { prependContext: context };
+      } catch (err) {
+        api.logger.warn(`[myn] Memory context injection failed: ${err}`);
+        return;
+      }
+    }, { priority: 10 });
+
+    api.logger.info('[myn] Registered before_prompt_build hook for Kaia memory injection');
   }
 };
 

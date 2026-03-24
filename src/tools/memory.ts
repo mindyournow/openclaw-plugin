@@ -1,5 +1,11 @@
 /**
- * myn_memory tool - Agent memory remember/recall/forget
+ * myn_memory tool - Agent memory remember/recall/forget/search
+ *
+ * MIN-801: Now wired to real backend endpoints:
+ * - remember → POST /api/v1/agent/memories
+ * - search   → GET /api/v1/agent/memories/search
+ * - recall   → GET /api/v1/customers/memories (unchanged)
+ * - forget   → DELETE /api/v1/customers/memories/{id} (unchanged)
  */
 
 import { Type } from '@sinclair/typebox';
@@ -14,29 +20,19 @@ export const MemoryInputSchema = Type.Object({
     Type.Literal('search')
   ]),
   // remember parameters
-  content: Type.Optional(Type.String({ minLength: 1, description: 'Memory content to store' })),
+  content: Type.Optional(Type.String({ minLength: 1, description: 'Memory content to store (max 500 chars)' })),
   category: Type.Optional(Type.Union([
-    Type.Literal('user_preference'),
-    Type.Literal('work_context'),
-    Type.Literal('personal_info'),
-    Type.Literal('decision'),
-    Type.Literal('insight'),
-    Type.Literal('routine')
+    Type.Literal('PREFERENCE'),
+    Type.Literal('PATTERN'),
+    Type.Literal('STYLE'),
+    Type.Literal('MYN_BEHAVIOR'),
+    Type.Literal('PERSONAL'),
+    Type.Literal('RELATIONSHIP')
   ])),
-  tags: Type.Optional(Type.Array(Type.String())),
-  importance: Type.Optional(Type.Union([
-    Type.Literal('low'),
-    Type.Literal('medium'),
-    Type.Literal('high'),
-    Type.Literal('critical')
-  ])),
-  expiresAt: Type.Optional(Type.String({ format: 'date-time', description: 'Optional expiration date' })),
   // recall/forget parameters
   memoryId: Type.Optional(Type.String({ format: 'uuid' })),
   // search parameters
   query: Type.Optional(Type.String()),
-  filterCategory: Type.Optional(Type.String()),
-  filterTags: Type.Optional(Type.Array(Type.String())),
   limit: Type.Optional(Type.Number({ default: 10 }))
 });
 
@@ -67,29 +63,32 @@ export async function executeMemory(
   }
 }
 
-async function remember(_client: MynApiClient, input: MemoryInput) {
+async function remember(client: MynApiClient, input: MemoryInput) {
   if (!input.content) {
     return errorResult('content is required for remember action');
   }
 
-  // The backend does not expose a POST /api/v1/customers/memories endpoint.
-  // Memories are created automatically through the AI conversation system (Kaia).
-  // To persist a memory, include it naturally in the conversation context so
-  // the backend's AI service stores it on your behalf.
-  return errorResult(
-    'Direct memory creation is not supported. Memories are created ' +
-    'automatically through conversations with the AI assistant. ' +
-    'To store a memory, mention it in conversation context.'
-  );
+  const body: Record<string, unknown> = { content: input.content };
+  if (input.category) {
+    body.type = input.category;
+  }
+
+  const data = await client.post<{
+    id: string;
+    type: string;
+    content: string;
+    confidence: number;
+    duplicate: boolean;
+    message: string;
+  }>('/api/v1/agent/memories', body);
+
+  return jsonResult(data);
 }
 
-/** W4: Maximum number of memories to fetch from the backend */
+/** Maximum number of memories to fetch from the backend */
 const MEMORY_FETCH_LIMIT = 50;
 
 async function recall(client: MynApiClient, input: MemoryInput) {
-  // The backend only supports GET /api/v1/customers/memories (list all).
-  // There is no GET /api/v1/customers/memories/{memoryId} endpoint.
-  // W4: Cap at 50 records to avoid over-fetching user data
   const params = new URLSearchParams({ limit: String(MEMORY_FETCH_LIMIT) });
   const data = await client.get<
     Array<{
@@ -104,7 +103,6 @@ async function recall(client: MynApiClient, input: MemoryInput) {
   >(`/api/v1/customers/memories?${params.toString()}`);
 
   if (input.memoryId) {
-    // Filter client-side for a specific memory
     const memories = Array.isArray(data) ? data : [];
     const match = memories.find(m => m.memoryId === input.memoryId);
     if (!match) {
@@ -130,51 +128,35 @@ async function forget(client: MynApiClient, input: MemoryInput) {
 }
 
 async function searchMemories(client: MynApiClient, input: MemoryInput) {
-  // The backend has no /api/v1/customers/memories/search endpoint.
-  // Fetch up to MEMORY_FETCH_LIMIT memories and filter client-side.
-  // W4: Cap at 50 records to avoid over-fetching user data
-  const params = new URLSearchParams({ limit: String(MEMORY_FETCH_LIMIT) });
-  const data = await client.get<
-    Array<{
-      memoryId: string;
+  if (!input.query) {
+    return errorResult('query is required for search action');
+  }
+
+  const params = new URLSearchParams({
+    query: input.query,
+    limit: String(input.limit ?? 10),
+  });
+
+  const data = await client.get<{
+    results: Array<{
+      id: string;
+      type: string;
       content: string;
-      category: string;
-      tags: string[];
-      importance: string;
+      confidence: number;
       createdAt: string;
-    }>
-  >(`/api/v1/customers/memories?${params.toString()}`);
+      topics?: string[];
+    }>;
+    total: number;
+  }>(`/api/v1/agent/memories/search?${params.toString()}`);
 
-  let results = Array.isArray(data) ? data : [];
-
-  // Client-side filtering
-  if (input.query) {
-    const q = input.query.toLowerCase();
-    results = results.filter(m =>
-      m.content?.toLowerCase().includes(q) ||
-      m.tags?.some(t => t.toLowerCase().includes(q))
-    );
-  }
-  if (input.filterCategory) {
-    results = results.filter(m => m.category === input.filterCategory);
-  }
-  if (input.filterTags && input.filterTags.length > 0) {
-    results = results.filter(m =>
-      input.filterTags!.every(tag => m.tags?.includes(tag))
-    );
-  }
-  if (input.limit) {
-    results = results.slice(0, input.limit);
-  }
-
-  return jsonResult({ results, total: results.length });
+  return jsonResult(data);
 }
 
 export function registerMemoryTool(api: OpenClawPluginApi, client: MynApiClient): void {
   api.registerTool({
     id: 'myn_memory',
     name: 'MYN Memory',
-    description: 'Store and retrieve agent memories. Actions: remember, recall, forget, search.',
+    description: 'Store and retrieve agent memories. Actions: remember (create a memory), recall (list all memories), forget (delete a memory), search (semantic search).',
     inputSchema: MemoryInputSchema,
     async execute(input: unknown) {
       return executeMemory(client, input as MemoryInput);
