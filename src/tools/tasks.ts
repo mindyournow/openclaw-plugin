@@ -6,6 +6,7 @@ import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult, guardedPatch, guardedPost } from '../client.js';
 import { validateUuid } from '../validation.js';
+import { resolveCalendarId } from './calendar.js';
 
 // Schema definitions
 const PrioritySchema = Type.Union([
@@ -56,9 +57,11 @@ export const TasksInputSchema = Type.Object({
   // Create specific
   id: Type.Optional(Type.String({ format: 'uuid' })), // Auto-generated if omitted — do NOT hallucinate UUIDs
   recurrenceRule: Type.Optional(Type.String()), // For HABIT/CHORE types
-  isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system. Use this field name, NOT autoScheduleEnabled.' })),
+  isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system. Defaults to true — only set false if user explicitly opts out.' })),
   autoScheduleEnabled: Type.Optional(Type.Boolean({ description: 'DEPRECATED alias for isAutoScheduled. Prefer isAutoScheduled.' })),
   calendarId: Type.Optional(Type.String({ description: 'Calendar ID to link this task to (e.g. "primary" for default Google Calendar)' })),
+  calendarName: Type.Optional(Type.String({ description: 'Calendar name to resolve (e.g. "Family", "Work"). Used instead of calendarId.' })),
+  scheduleNames: Type.Optional(Type.Array(Type.String(), { description: 'Schedule names to assign (e.g. ["Morning"], ["Weekday Evening", "Weekend Morning"]). Resolved to IDs automatically.' })),
   // Update specific
   updates: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   // Search parameters
@@ -155,8 +158,21 @@ async function createTask(client: MynApiClient, input: TasksInput) {
   if (input.recurrenceRule) body.recurrenceRule = input.recurrenceRule;
   // Accept both field names — some models hallucinate "autoScheduleEnabled" instead of "isAutoScheduled"
   const autoSched = input.isAutoScheduled ?? (input as Record<string, unknown>).autoScheduleEnabled;
-  if (autoSched != null) body.isAutoScheduled = autoSched;
-  if (input.calendarId) body.calendarId = input.calendarId;
+  // Default to auto-scheduled unless explicitly set to false
+  body.isAutoScheduled = autoSched ?? true;
+
+  // Resolve calendarName → calendarId if needed
+  let effectiveCalendarId = input.calendarId;
+  if (!effectiveCalendarId && input.calendarName) {
+    effectiveCalendarId = await resolveCalendarId(client, input.calendarName) ?? undefined;
+  }
+  if (effectiveCalendarId) body.calendarId = effectiveCalendarId;
+
+  // Resolve scheduleNames → scheduleIds
+  if (input.scheduleNames && input.scheduleNames.length > 0) {
+    const scheduleIds = await resolveScheduleNames(client, input.scheduleNames);
+    if (scheduleIds.length > 0) body.scheduleIds = scheduleIds;
+  }
 
   // Validation: HABIT and CHORE must have recurrenceRule
   if ((input.taskType === 'HABIT' || input.taskType === 'CHORE') && !input.recurrenceRule) {
@@ -263,11 +279,36 @@ async function searchTasks(client: MynApiClient, input: TasksInput) {
   return jsonResult(data);
 }
 
+/**
+ * Resolve schedule names to IDs by looking up the user's available schedules.
+ */
+async function resolveScheduleNames(client: MynApiClient, names: string[]): Promise<string[]> {
+  try {
+    const schedules = await client.get<Array<{ id: string; name: string }>>('/api/schedules');
+    if (!schedules || !Array.isArray(schedules)) return [];
+
+    const ids: string[] = [];
+    for (const name of names) {
+      const nameLower = name.toLowerCase().trim();
+      // Exact match first, then contains
+      const match = schedules.find(s => s.name?.toLowerCase() === nameLower)
+        ?? schedules.find(s => s.name?.toLowerCase().includes(nameLower));
+      if (match) ids.push(match.id);
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 export function registerTasksTool(api: OpenClawPluginApi, client: MynApiClient): void {
   api.registerTool({
     id: 'myn_tasks',
     name: 'MYN Tasks',
-    description: 'Manage tasks, habits, and chores. Actions: list, get, create, update, complete, archive, search.',
+    description: 'Manage tasks, habits, and chores. Actions: list, get, create, update, complete, archive, search. ' +
+      'SCHEDULING: Tasks default to isAutoScheduled=true. Always assign scheduleNames based on when the task should happen ' +
+      '(e.g. ["Morning"], ["Weekend Morning"], ["Weekday Evening"]). Use calendarName to link to a specific calendar (e.g. "Family"). ' +
+      'CALENDAR EVENTS: When creating a task for a specific date/time event, also create a matching calendar event via myn_calendar.',
     inputSchema: TasksInputSchema,
     async execute(input: unknown) {
       return executeTasks(client, input as TasksInput);

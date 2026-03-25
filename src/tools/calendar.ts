@@ -57,12 +57,14 @@ export const CalendarInputSchema = Type.Object({
     Type.Literal('create_event'),
     Type.Literal('update_event'),
     Type.Literal('delete_event'),
+    Type.Literal('move_event'),
     Type.Literal('meetings')
   ]),
   // list_events parameters
   startDate: Type.Optional(Type.String({ format: 'date-time' })),
   endDate: Type.Optional(Type.String({ format: 'date-time' })),
   calendarId: Type.Optional(Type.String()),
+  calendarName: Type.Optional(Type.String({ description: 'Calendar name to resolve to ID (e.g. "Family", "Work"). Use instead of calendarId when you know the name but not the ID.' })),
   includeAllDay: Type.Optional(Type.Boolean({ default: true })),
   limit: Type.Optional(Type.Number({ default: 50 })),
   // create_event parameters — startTime must be ISO 8601 (e.g. "2026-03-08T16:30:00")
@@ -90,6 +92,10 @@ export const CalendarInputSchema = Type.Object({
   newEndTime: Type.Optional(Type.String({ format: 'date-time', description: 'New end time (ISO 8601)' })),
   newAttendees: Type.Optional(Type.Array(Type.String(), { description: 'Replace attendees list (email addresses or household member names)' })),
   addAttendees: Type.Optional(Type.Array(Type.String(), { description: 'Add attendees to existing list (email addresses or household member names)' })),
+  // move_event parameters
+  destinationCalendarId: Type.Optional(Type.String({ description: 'Target calendar ID for move_event' })),
+  destinationCalendarName: Type.Optional(Type.String({ description: 'Target calendar name for move_event (e.g. "Family")' })),
+  sourceCalendarId: Type.Optional(Type.String({ description: 'Source calendar ID for move_event (defaults to "primary")' })),
   // meetings parameters
   includePast: Type.Optional(Type.Boolean({ default: false })),
   daysAhead: Type.Optional(Type.Number({ default: 7 }))
@@ -115,6 +121,8 @@ export async function executeCalendar(
         return await updateEvent(client, input);
       case 'delete_event':
         return await deleteEvent(client, input);
+      case 'move_event':
+        return await moveEvent(client, input);
       case 'meetings':
         return await getMeetings(client, input);
       default:
@@ -367,6 +375,16 @@ async function createEvent(client: MynApiClient, input: CalendarInput) {
     ? await resolveAttendeesToEmails(client, input.attendees)
     : undefined;
 
+  // Resolve calendarId: explicit calendarId > calendarName > auto-detect family calendar > "primary"
+  let effectiveCalendarId = input.calendarId;
+  if (!effectiveCalendarId && input.calendarName) {
+    effectiveCalendarId = await resolveCalendarId(client, input.calendarName) ?? undefined;
+  }
+  // Auto-detect family calendar when attendees include household members
+  if (!effectiveCalendarId && resolvedAttendees && resolvedAttendees.length > 0) {
+    effectiveCalendarId = await detectFamilyCalendar(client) ?? undefined;
+  }
+
   const body: Record<string, unknown> = {
     title: input.title,
     startTime,
@@ -376,7 +394,7 @@ async function createEvent(client: MynApiClient, input: CalendarInput) {
   if (!input.isAllDay && endTime) body.endTime = endTime;
   if (input.description) body.description = input.description;
   if (input.location) body.location = input.location;
-  if (input.calendarId) body.calendarId = input.calendarId;
+  if (effectiveCalendarId) body.calendarId = effectiveCalendarId;
   if (input.timezone) body.timezone = input.timezone;
   if (resolvedAttendees && resolvedAttendees.length > 0) body.attendees = resolvedAttendees;
   if (input.recurrence) body.recurrence = input.recurrence;
@@ -432,7 +450,11 @@ async function updateEvent(client: MynApiClient, input: CalendarInput) {
     return errorResult('No update fields provided. Use newTitle, newDescription, newLocation, newStartTime, newEndTime, newAttendees, or addAttendees.');
   }
 
-  const calendarId = input.calendarId ?? 'primary';
+  let calendarId = input.calendarId;
+  if (!calendarId && input.calendarName) {
+    calendarId = await resolveCalendarId(client, input.calendarName) ?? 'primary';
+  }
+  calendarId = calendarId ?? 'primary';
   const data = await client.patch<unknown>(
     `/api/v2/calendar/standalone-events/${input.eventId}?calendarId=${encodeURIComponent(calendarId)}`,
     updates
@@ -483,11 +505,67 @@ async function getMeetings(client: MynApiClient, input: CalendarInput) {
   return jsonResult(data);
 }
 
+/**
+ * Auto-detect a family/shared calendar.
+ * Looks for calendars with "family" or "shared" in the name.
+ * Returns the calendar ID if found, null otherwise.
+ */
+async function detectFamilyCalendar(client: MynApiClient): Promise<string | null> {
+  try {
+    const data = await client.get<{
+      calendars: Array<{ id: string; name: string; using: boolean }>;
+    }>('/api/v1/customers/calendars');
+
+    if (!data?.calendars) return null;
+
+    const familyKeywords = ['family', 'shared', 'household'];
+    for (const cal of data.calendars) {
+      if (!cal.name || !cal.using) continue;
+      const nameLower = cal.name.toLowerCase();
+      if (familyKeywords.some(kw => nameLower.includes(kw))) {
+        return cal.id;
+      }
+    }
+  } catch {
+    // Calendar lookup failed; fall through to default
+  }
+  return null;
+}
+
+async function moveEvent(client: MynApiClient, input: CalendarInput) {
+  if (!input.eventId) {
+    return errorResult('eventId is required for move_event action');
+  }
+
+  // Resolve destination calendar
+  let destinationId = input.destinationCalendarId;
+  if (!destinationId && input.destinationCalendarName) {
+    destinationId = await resolveCalendarId(client, input.destinationCalendarName) ?? undefined;
+  }
+  if (!destinationId) {
+    return errorResult('destinationCalendarId or destinationCalendarName is required for move_event action');
+  }
+
+  const sourceId = input.sourceCalendarId ?? 'primary';
+
+  const data = await client.post<unknown>(
+    `/api/v2/calendar/standalone-events/${input.eventId}/move?sourceCalendarId=${encodeURIComponent(sourceId)}&destinationCalendarId=${encodeURIComponent(destinationId)}`,
+    {}
+  );
+  return jsonResult(data);
+}
+
 export function registerCalendarTool(api: OpenClawPluginApi, client: MynApiClient): void {
   api.registerTool({
     id: 'myn_calendar',
     name: 'MYN Calendar',
-    description: 'Manage calendar events and meetings. Actions: list_calendars (get available calendars with id/name), list_events, get_event, create_event, update_event, delete_event, meetings. Use list_calendars to find calendar IDs when user mentions a calendar by name (e.g. "family calendar"). For create_event: startTime must be ISO 8601. For update_event: pass eventId and fields to change. SHARING: To share/invite people, use the attendees field with email addresses, household member first names, or "family"/"everyone" to invite all household members. When user says "share with family" or "invite everyone", pass attendees: ["family"].',
+    description: 'Manage calendar events and meetings. Actions: list_calendars, list_events, get_event, create_event, update_event, delete_event, move_event, meetings. ' +
+      'CALENDAR SELECTION: Use calendarName (e.g. "Family") instead of calendarId when you know the name. ' +
+      'HOUSEHOLD AWARENESS: When creating events involving household members, the plugin auto-detects the family calendar. ' +
+      'If user mentions "family calendar" or household members by name, events will automatically go to the shared/family calendar. ' +
+      'SHARING: Use attendees with email addresses, household member first names, or "family"/"everyone" to invite all household members. ' +
+      'MOVE: Use move_event with eventId and destinationCalendarName (e.g. "Family") to move an event between calendars. ' +
+      'For create_event: startTime must be ISO 8601. For update_event: pass eventId and fields to change.',
     inputSchema: CalendarInputSchema,
     async execute(input: unknown) {
       return executeCalendar(client, input as CalendarInput);
