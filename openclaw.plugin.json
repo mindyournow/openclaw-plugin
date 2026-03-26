@@ -1,7 +1,7 @@
 {
   "id": "myn",
   "name": "Mind Your Now",
-  "version": "0.1.0",
+  "version": "0.8.2",
   "description": "AI-powered task and life management for OpenClaw agents",
   "author": "Mind Your Now <team@mindyournow.com>",
   "license": "MIT",

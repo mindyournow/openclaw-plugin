@@ -160,7 +160,7 @@ export default {
       },
     };
 
-    // Register all 13 tools
+    // Register all 14 tools
     registerTasksTool(wrappedApi, client);
     registerDebriefTool(wrappedApi, client);
     registerCalendarTool(wrappedApi, client);

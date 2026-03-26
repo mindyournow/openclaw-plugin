@@ -11,7 +11,7 @@ This plugin integrates [Mind Your Now](https://mindyournow.com) (MYN) with [Open
 
 ## Features
 
-- **12 powerful tools** for complete MYN integration
+- **14 powerful tools** for complete MYN integration
 - **Urgency-based prioritization** following the MYN methodology
 - **Shared API client** with automatic authentication
 - **Built-in skill companion** for workflow guidance
@@ -71,7 +71,16 @@ taskType: TASK
 priority: CRITICAL
 startDate: "2026-03-01"
 duration: "2h"
+isAutoScheduled: true
+calendarName: "Work"
+scheduleNames:
+  - "Morning"
 ```
+
+**Scheduling Parameters:**
+- `isAutoScheduled` (boolean): Enable auto-scheduling by the planning system. Defaults to `true`.
+- `calendarId` / `calendarName`: Link the task to a specific calendar. `calendarName` is resolved to an ID automatically.
+- `scheduleNames` (string[]): Schedule names to assign (e.g., `["Morning"]`, `["Weekday Evening", "Weekend Morning"]`). Resolved to IDs automatically.
 
 ### myn_debrief
 Generate and manage Daily Debrief sessions.
@@ -84,27 +93,50 @@ action: status | generate | get | apply_correction | complete_session
 ```yaml
 # Generate morning debrief
 action: generate
+type: DAILY
 context: "Morning planning session"
 focusAreas:
   - work
   - health
+
+# Generate evening review
+action: generate
+type: EVENING
 ```
+
+The `type` parameter for `generate` accepts: `DAILY`, `EVENING`, `WEEKLY`, `WEEKLY_AND_DAILY`, `ON_DEMAND`. Defaults to `DAILY`.
 
 ### myn_calendar
 Manage calendar events and meetings.
 
 ```yaml
-action: list_events | create_event | delete_event | meetings
+action: list_calendars | list_events | get_event | create_event | update_event | delete_event | move_event | meetings
 ```
 
 **Examples:**
 ```yaml
+# List available calendars
+action: list_calendars
+
 # Create an event
 action: create_event
 title: "Team Standup"
 startTime: "2026-03-01T09:00:00Z"
 endTime: "2026-03-01T09:30:00Z"
+
+# Update an event
+action: update_event
+eventId: "event-uuid"
+newTitle: "Team Standup (Rescheduled)"
+newStartTime: "2026-03-01T10:00:00Z"
+
+# Move event to family calendar
+action: move_event
+eventId: "event-uuid"
+destinationCalendarName: "Family"
 ```
+
+Calendar events may include a `taskId` field (MYN task UUID) when the event is linked to a task.
 
 ### myn_habits
 Track habits, streaks, and reminders.
@@ -117,7 +149,7 @@ action: streaks | skip | chains | schedule | reminders
 Manage grocery and shopping lists.
 
 ```yaml
-action: get | add | toggle | bulk_add | convert_to_tasks
+action: get | add | toggle | bulk_add | update | delete | delete_checked | convert_to_tasks
 ```
 
 ### myn_search
@@ -164,10 +196,10 @@ action: remember | recall | forget | search
 # Remember user preference
 action: remember
 content: "User prefers morning meetings before 10am"
-category: user_preference
-tags: ["meetings", "preferences"]
-importance: medium
+category: PREFERENCE
 ```
+
+**Categories:** `PREFERENCE`, `PATTERN`, `STYLE`, `MYN_BEHAVIOR`, `PERSONAL`, `RELATIONSHIP`
 
 ### myn_profile
 Manage user profile, goals, and preferences.
@@ -195,6 +227,73 @@ AI-powered planning and scheduling.
 
 ```yaml
 action: plan | schedule_all | reschedule
+```
+
+### myn_ynab
+YNAB budget management with full read/write access.
+
+```yaml
+# Budget & accounts
+action: budget_overview | category_balance | list_categories | account_balances | set_budget_amount | set_category_goal | goal_progress | budget_months | search_payees
+
+# Transactions
+action: create_transaction | create_transactions_bulk | list_transactions | update_transaction | delete_transaction | split_transaction
+
+# Scheduled transactions & subscriptions
+action: scheduled_transactions | create_scheduled_transaction | update_scheduled_transaction | delete_scheduled_transaction | subscriptions | upcoming_bills
+
+# Analytics
+action: spending_insights | payee_analysis | spending_trends | net_worth | debt_tracking
+
+# Category management
+action: create_category_group | create_category | rename_category | move_category | rename_category_group
+
+# Connection
+action: connection_status
+```
+
+**Examples:**
+```yaml
+# Check budget overview
+action: budget_overview
+
+# Create a transaction
+action: create_transaction
+accountId: "account-uuid"
+payeeName: "Grocery Store"
+amount: -45.50
+categoryName: "Groceries"
+
+# Get spending insights
+action: spending_insights
+months: 3
+```
+
+Amounts are in dollars (negative for expenses). Categories are resolved by name via fuzzy match. `categoryName` is required for all non-transfer transactions.
+
+### myn_a2a_pairing
+Pair OpenClaw with MYN/Kaia via the A2A (Agent-to-Agent) protocol.
+
+```yaml
+action: redeem_invite | ping | send_message | get_agent_card
+```
+
+**Examples:**
+```yaml
+# Redeem an invite code from MYN Settings
+action: redeem_invite
+inviteCode: "ABC-12345"
+agentName: "openclaw"
+
+# Ping MYN after pairing
+action: ping
+agentKey: "key-from-redeem-invite"
+
+# Send a message to Kaia
+action: send_message
+agentKey: "key-from-redeem-invite"
+message: "Hello from OpenClaw"
+intent: chat
 ```
 
 ## The MYN Methodology
