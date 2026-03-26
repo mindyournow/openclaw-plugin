@@ -15,6 +15,13 @@ export const DebriefInputSchema = Type.Object({
     Type.Literal('complete_session')
   ]),
   // generate parameters
+  type: Type.Optional(Type.Union([
+    Type.Literal('DAILY'),
+    Type.Literal('EVENING'),
+    Type.Literal('WEEKLY'),
+    Type.Literal('WEEKLY_AND_DAILY'),
+    Type.Literal('ON_DEMAND')
+  ], { description: 'Type of debrief to generate. Defaults to DAILY.' })),
   context: Type.Optional(Type.String({ description: 'Additional context for briefing generation' })),
   focusAreas: Type.Optional(Type.Array(Type.String())),
   // get parameters
@@ -77,7 +84,9 @@ async function getDebriefStatus(client: MynApiClient) {
 }
 
 async function generateDebrief(client: MynApiClient, input: DebriefInput) {
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = {
+    type: input.type ?? 'DAILY',
+  };
 
   if (input.context) body.context = input.context;
   if (input.focusAreas && input.focusAreas.length > 0) body.focusAreas = input.focusAreas;
