@@ -14,7 +14,7 @@ import { registerCalendarTool } from './src/tools/calendar.js';
 import { registerHabitsTool } from './src/tools/habits.js';
 import { registerListsTool } from './src/tools/lists.js';
 import { registerSearchTool } from './src/tools/search.js';
-import { registerTimersTool } from './src/tools/timers.js';
+import { registerTimersTool, type TimerProvenance } from './src/tools/timers.js';
 import { registerMemoryTool } from './src/tools/memory.js';
 import { registerProfileTool } from './src/tools/profile.js';
 import { registerHouseholdTool } from './src/tools/household.js';
@@ -94,6 +94,10 @@ function deepNormalize(schema: unknown): unknown {
 export interface MynPluginConfig {
   apiKey: string;
   baseUrl?: string;
+  /** Human-readable agent name for provenance tracking (e.g. "OpenClaw/exe.dev") */
+  agentName?: string;
+  /** Originating channel for provenance tracking (e.g. "slack:#finance") */
+  channel?: string;
 }
 
 const DEFAULT_BASE_URL = 'https://api.mindyournow.com';
@@ -120,6 +124,8 @@ export default {
   register(api: OpenClawPluginApi): void {
     const apiKey = api.pluginConfig?.apiKey as string | undefined;
     const baseUrl = (api.pluginConfig?.baseUrl as string) || DEFAULT_BASE_URL;
+    const agentName = api.pluginConfig?.agentName as string | undefined;
+    const channel = api.pluginConfig?.channel as string | undefined;
 
     if (!apiKey) {
       api.logger.warn('[myn] apiKey not configured; MYN tools will not be registered');
@@ -134,10 +140,19 @@ export default {
       return;
     }
 
-    api.logger.info('[myn] Initializing Mind Your Now plugin...');
+    if (!agentName) {
+      api.logger.warn('[myn] agentName not configured; timer provenance will be incomplete. Set plugins.entries.myn.config.agentName');
+    }
+
+    api.logger.info(`[myn] Initializing Mind Your Now plugin (agent=${agentName ?? 'unknown'}, channel=${channel ?? 'unknown'})...`);
 
     // Create shared API client
     const client = new MynApiClient(baseUrl, apiKey);
+
+    // Build provenance for timer/alarm creation
+    const timerProvenance: TimerProvenance | undefined = agentName
+      ? { sourceAgentName: agentName, sourceChannel: channel }
+      : undefined;
 
     // Wrap registerTool to adapt our internal tool format to OpenClaw's plugin SDK:
     // - 'parameters' (not 'inputSchema') for the schema
@@ -167,7 +182,7 @@ export default {
     registerHabitsTool(wrappedApi, client);
     registerListsTool(wrappedApi, client);
     registerSearchTool(wrappedApi, client);
-    registerTimersTool(wrappedApi, client);
+    registerTimersTool(wrappedApi, client, timerProvenance);
     registerMemoryTool(wrappedApi, client);
     registerProfileTool(wrappedApi, client);
     registerHouseholdTool(wrappedApi, client);
@@ -200,6 +215,12 @@ export default {
 ### Household Awareness
 - When a user mentions a family member by first name, recognize them as a household member.
 - For shared activities, prefer the family calendar and include relevant household members as attendees.
+
+### Timers & Alarms
+- Timers and alarms are delivered as push notifications to the USER's phone/device. They are NOT notes-to-self for agents.
+- Only create a timer or alarm when the user explicitly requests a reminder, timer, or alarm.
+- Do NOT create timers to schedule your own future actions or as internal bookkeeping.
+- Timer names should be short, user-friendly descriptions (e.g. "Laundry", "Take medicine"), NOT instructions to yourself.
 `
       };
     }, { priority: 5 }); // Lower priority = runs first, before memories

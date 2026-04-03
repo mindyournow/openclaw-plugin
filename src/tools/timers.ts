@@ -6,6 +6,12 @@ import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
 import { jsonResult, errorResult, guardedPost } from '../client.js';
 
+/** Agent provenance fields injected into every timer creation request */
+export interface TimerProvenance {
+  sourceAgentName: string;
+  sourceChannel?: string;
+}
+
 export const TimersInputSchema = Type.Object({
   action: Type.Union([
     Type.Literal('create_countdown'),
@@ -24,7 +30,7 @@ export const TimersInputSchema = Type.Object({
   recurrence: Type.Optional(Type.String({ description: 'Recurrence pattern (e.g., "daily", "weekdays")' })),
   sound: Type.Optional(Type.String()),
   // cancel/snooze parameters
-  timerId: Type.Optional(Type.String({ format: 'uuid' })),
+  timerId: Type.Optional(Type.String()),
   // snooze parameters
   snoozeMinutes: Type.Optional(Type.Number({ default: 5 })),
   // pomodoro parameters
@@ -39,14 +45,15 @@ export type TimersInput = typeof TimersInputSchema.static;
 
 export async function executeTimers(
   client: MynApiClient,
-  input: TimersInput
+  input: TimersInput,
+  provenance?: TimerProvenance
 ): Promise<{ success: true; data: unknown } | { success: false; error: string; details?: unknown }> {
   try {
     switch (input.action) {
       case 'create_countdown':
-        return await createCountdown(client, input);
+        return await createCountdown(client, input, provenance);
       case 'create_alarm':
-        return await createAlarm(client, input);
+        return await createAlarm(client, input, provenance);
       case 'list':
         return await listTimers(client);
       case 'cancel':
@@ -54,7 +61,7 @@ export async function executeTimers(
       case 'snooze':
         return await snoozeTimer(client, input);
       case 'pomodoro':
-        return await createPomodoro(client, input);
+        return await createPomodoro(client, input, provenance);
       default:
         return errorResult(`Unknown action: ${(input as { action: string }).action}`);
     }
@@ -66,7 +73,7 @@ export async function executeTimers(
   }
 }
 
-async function createCountdown(client: MynApiClient, input: TimersInput) {
+async function createCountdown(client: MynApiClient, input: TimersInput, provenance?: TimerProvenance) {
   let durationSeconds = input.duration;
 
   if (!durationSeconds && input.durationMinutes) {
@@ -78,11 +85,10 @@ async function createCountdown(client: MynApiClient, input: TimersInput) {
   }
 
   const body: Record<string, unknown> = {
-    type: 'COUNTDOWN',
-    duration: durationSeconds
+    name: input.label ?? 'Countdown',
+    durationSeconds,
+    ...provenanceFields(provenance)
   };
-
-  if (input.label) body.label = input.label;
 
   const data = await client.post<{
     timerId: string;
@@ -96,14 +102,15 @@ async function createCountdown(client: MynApiClient, input: TimersInput) {
   return jsonResult(data);
 }
 
-async function createAlarm(client: MynApiClient, input: TimersInput) {
+async function createAlarm(client: MynApiClient, input: TimersInput, provenance?: TimerProvenance) {
   if (!input.alarmTime) {
     return errorResult('alarmTime is required for create_alarm action');
   }
 
   const body: Record<string, unknown> = {
     name: input.label ?? 'Alarm',
-    alarmTime: input.alarmTime
+    alarmTime: input.alarmTime,
+    ...provenanceFields(provenance)
   };
 
   if (input.recurrence) body.recurrence = input.recurrence;
@@ -179,17 +186,17 @@ async function snoozeTimer(client: MynApiClient, input: TimersInput) {
   return jsonResult(data);
 }
 
-async function createPomodoro(client: MynApiClient, input: TimersInput) {
+async function createPomodoro(client: MynApiClient, input: TimersInput, provenance?: TimerProvenance) {
   const body: Record<string, unknown> = {
+    name: input.label ?? 'Pomodoro',
     type: 'POMODORO',
-    workDuration: (input.workDuration ?? 25) * 60, // Convert to seconds
+    durationSeconds: (input.workDuration ?? 25) * 60, // Convert to seconds
     breakDuration: (input.breakDuration ?? 5) * 60,
     longBreakDuration: (input.longBreakDuration ?? 15) * 60,
     sessions: input.sessions ?? 4,
-    autoStart: input.autoStart ?? false
+    autoStart: input.autoStart ?? false,
+    ...provenanceFields(provenance)
   };
-
-  if (input.label) body.label = input.label;
 
   const data = await client.post<{
     timerId: string;
@@ -208,14 +215,27 @@ async function createPomodoro(client: MynApiClient, input: TimersInput) {
   return jsonResult(data);
 }
 
-export function registerTimersTool(api: OpenClawPluginApi, client: MynApiClient): void {
+/** Build provenance body fields from config */
+function provenanceFields(provenance?: TimerProvenance): Record<string, string> {
+  if (!provenance) return {};
+  const fields: Record<string, string> = {};
+  if (provenance.sourceAgentName) fields.sourceAgentName = provenance.sourceAgentName;
+  if (provenance.sourceChannel) fields.sourceChannel = provenance.sourceChannel;
+  return fields;
+}
+
+export function registerTimersTool(api: OpenClawPluginApi, client: MynApiClient, provenance?: TimerProvenance): void {
   api.registerTool({
     id: 'myn_timers',
     name: 'MYN Timers',
-    description: 'Manage countdowns, alarms, and pomodoro timers. Actions: create_countdown, create_alarm, list, cancel, snooze, pomodoro.',
+    description: 'Manage timers for the USER (not for yourself). ' +
+      'Timers create notifications on the user\'s phone/device. ' +
+      'Actions: create_countdown, create_alarm, list, cancel, snooze, pomodoro. ' +
+      'IMPORTANT: Only create timers when the user explicitly asks for a reminder or timer. ' +
+      'Do NOT create timers as notes-to-self or to schedule your own future actions.',
     inputSchema: TimersInputSchema,
     async execute(input: unknown) {
-      return executeTimers(client, input as TimersInput);
+      return executeTimers(client, input as TimersInput, provenance);
     }
   });
 }
