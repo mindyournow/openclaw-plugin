@@ -110,7 +110,7 @@ export class MynApiError extends Error {
 }
 
 // MIN-930: Recursive redaction for secret-shaped keys
-const SECRET_KEY_PATTERN = /(?i)(access|refresh|id)_?token|secret|client_?secret|api_?key|password|credential/i;
+const SECRET_KEY_PATTERN = /(access|refresh|id)_?token|secret|client_?secret|api_?key|password|credential/i;
 
 /**
  * Recursively redact values whose keys match secret patterns. MIN-930 backstop.
