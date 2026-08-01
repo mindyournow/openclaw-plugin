@@ -331,6 +331,17 @@ When creating tasks, you MUST provide:
 
 **Duration Format**: Use simple format like "30m", "1h", "1h30m" (NOT ISO PT prefix)
 
+## Security Posture
+
+The plugin implements several security layers:
+
+- **S1 — TLS enforcement:** API URLs must use HTTPS; plain HTTP is accepted only for `localhost` and `127.0.0.1`.
+- **S2 — No mass assignment:** Tool updates pass through an explicit field allowlist.
+- **S3 — Safe query parameters:** All query strings use proper URL encoding.
+- **S4 — Data minimization:** Memory search and credential handling avoid unnecessary data exposure.
+- **S5 — Tool result redaction:** Each tool result is recursively scanned for secret-shaped keys (accessToken, refreshToken, apiKey, secret, password, credential, etc.) and matching values are replaced with `[REDACTED]` before returning to OpenClaw. This is a backstop against server-side regressions.
+- **S6 — Visible degradation:** API failures are logged and never silently ignored.
+
 ## Skill Companion
 
 This plugin includes a companion skill at `skills/myn/SKILL.md` that teaches agents MYN workflow patterns including:

@@ -109,11 +109,39 @@ export class MynApiError extends Error {
   }
 }
 
+// MIN-930: Recursive redaction for secret-shaped keys
+const SECRET_KEY_PATTERN = /(access|refresh|id)_?token|secret|client_?secret|api_?key|password|credential/i;
+
+/**
+ * Recursively redact values whose keys match secret patterns. MIN-930 backstop.
+ */
+function redactSecrets(obj: unknown): unknown {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj === 'object' && Array.isArray(obj)) {
+    return obj.map((item) => redactSecrets(item));
+  }
+
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = SECRET_KEY_PATTERN.test(key) ? '[REDACTED]' : redactSecrets(value);
+    }
+    return result;
+  }
+
+  return obj;
+}
+
 /**
  * Helper to create a standardized tool result
  */
-export function jsonResult<T>(data: T): { success: true; data: T } {
-  return { success: true, data };
+export function jsonResult<T>(data: T): { success: true; data: unknown } {
+  // MIN-930: Redact secret-shaped keys from the result before returning to OpenClaw.
+  // This is a backstop against API regressions; server-side gates are the primary defense.
+  return { success: true, data: redactSecrets(data) };
 }
 
 /**
