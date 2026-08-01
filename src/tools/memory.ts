@@ -89,9 +89,9 @@ async function remember(client: MynApiClient, input: MemoryInput) {
 const MEMORY_FETCH_LIMIT = 50;
 
 async function recall(client: MynApiClient, input: MemoryInput) {
-  const params = new URLSearchParams({ limit: String(MEMORY_FETCH_LIMIT) });
-  const data = await client.get<
-    Array<{
+  const params = new URLSearchParams({ limit: String(input.limit ?? MEMORY_FETCH_LIMIT) });
+  const data = await client.get<{
+    memories: Array<{
       memoryId: string;
       content: string;
       category: string;
@@ -99,11 +99,15 @@ async function recall(client: MynApiClient, input: MemoryInput) {
       importance: string;
       createdAt: string;
       accessedAt?: string;
-    }>
-  >(`/api/v1/customers/memories?${params.toString()}`);
+    }>;
+    totalCount: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  }>(`/api/v1/customers/memories?${params.toString()}`);
+  const memories = data.memories;
 
   if (input.memoryId) {
-    const memories = Array.isArray(data) ? data : [];
     const match = memories.find(m => m.memoryId === input.memoryId);
     if (!match) {
       return errorResult(`Memory not found: ${input.memoryId}`);
@@ -111,7 +115,7 @@ async function recall(client: MynApiClient, input: MemoryInput) {
     return jsonResult(match);
   }
 
-  return jsonResult(data);
+  return jsonResult(memories);
 }
 
 async function forget(client: MynApiClient, input: MemoryInput) {
