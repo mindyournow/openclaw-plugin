@@ -92,13 +92,20 @@ async function recall(client: MynApiClient, input: MemoryInput) {
   const params = new URLSearchParams({ limit: String(input.limit ?? MEMORY_FETCH_LIMIT) });
   const data = await client.get<{
     memories: Array<{
-      memoryId: string;
+      id: string;
+      type: string;
       content: string;
-      category: string;
-      tags: string[];
-      importance: string;
+      confidence: number;
+      sourceConversationId: string | null;
+      sourceGoalId: string | null;
       createdAt: string;
-      accessedAt?: string;
+      lastReinforcedAt: string | null;
+      reinforcementCount: number;
+      lastUsedAt: string | null;
+      usageCount: number;
+      topics: string[];
+      hasEmbedding: boolean;
+      confidenceLevel: string;
     }>;
     totalCount: number;
     limit: number;
@@ -108,7 +115,7 @@ async function recall(client: MynApiClient, input: MemoryInput) {
   const memories = data.memories;
 
   if (input.memoryId) {
-    const match = memories.find(m => m.memoryId === input.memoryId);
+    const match = memories.find(m => m.id === input.memoryId);
     if (!match) {
       return errorResult(`Memory not found: ${input.memoryId}`);
     }

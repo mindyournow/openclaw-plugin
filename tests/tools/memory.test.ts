@@ -9,6 +9,22 @@ import { MynApiClient } from '../../src/client.js';
 describe('myn_memory', () => {
   const mockFetch = vi.fn();
   let client: MynApiClient;
+  const memoryDto = (id: string, content: string) => ({
+    id,
+    type: 'PREFERENCE',
+    content,
+    confidence: 0.9,
+    sourceConversationId: 'conversation-1',
+    sourceGoalId: null,
+    createdAt: '2026-03-01T10:00:00Z',
+    lastReinforcedAt: null,
+    reinforcementCount: 1,
+    lastUsedAt: null,
+    usageCount: 0,
+    topics: ['preference'],
+    hasEmbedding: true,
+    confidenceLevel: 'high'
+  });
 
   beforeEach(() => {
     globalThis.fetch = mockFetch;
@@ -79,9 +95,7 @@ describe('myn_memory', () => {
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          memories: [
-            { memoryId: '1', content: 'Memory 1', category: 'work_context', tags: [], importance: 'high', createdAt: '2026-03-01T10:00:00Z' }
-          ],
+          memories: [memoryDto('1', 'Memory 1')],
           totalCount: 1,
           limit: 50,
           offset: 0,
@@ -93,9 +107,7 @@ describe('myn_memory', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toEqual([
-          { memoryId: '1', content: 'Memory 1', category: 'work_context', tags: [], importance: 'high', createdAt: '2026-03-01T10:00:00Z' }
-        ]);
+        expect(result.data).toEqual([memoryDto('1', 'Memory 1')]);
       }
       expect(mockFetch.mock.calls[0][0]).toContain('limit=50');
     });
@@ -124,15 +136,7 @@ describe('myn_memory', () => {
         status: 200,
         json: () => Promise.resolve({
           memories: [
-            {
-              memoryId: '550e8400-e29b-41d4-a716-446655440000',
-              content: 'Specific memory',
-              category: 'user_preference',
-              tags: ['pref'],
-              importance: 'medium',
-              createdAt: '2026-03-01T10:00:00Z',
-              accessedAt: '2026-03-01T12:00:00Z'
-            }
+            memoryDto('550e8400-e29b-41d4-a716-446655440000', 'Specific memory')
           ],
           totalCount: 1,
           limit: 50,
@@ -148,7 +152,7 @@ describe('myn_memory', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('memoryId', '550e8400-e29b-41d4-a716-446655440000');
+        expect(result.data).toHaveProperty('id', '550e8400-e29b-41d4-a716-446655440000');
       }
     });
   });
