@@ -239,12 +239,51 @@ describe('myn_habits', () => {
       const result = await executeHabits(client, { action: 'reminders' });
 
       expect(mockFetch.mock.calls[0][0]).toBe(
-        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT'
+        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=0&size=200'
       );
       expect(result).toEqual({
         success: true,
         data: {
           reminders: [{ habitId, title: 'Exercise', reminderTime: '08:00' }]
+        }
+      });
+    });
+
+    it('returns an enabled reminder from a later unified-task page', async () => {
+      const firstPage = Array.from({ length: 200 }, (_, index) => ({
+        id: `habit-${index}`,
+        taskType: 'HABIT',
+        reminderEnabled: false
+      }));
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ tasks: firstPage })
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          tasks: [{
+            id: habitId,
+            title: 'Later-page habit',
+            taskType: 'HABIT',
+            reminderEnabled: true,
+            reminderTime: '08:00'
+          }]
+        })
+      });
+
+      const result = await executeHabits(client, { action: 'reminders' });
+
+      expect(mockFetch.mock.calls.map(call => call[0])).toEqual([
+        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=0&size=200',
+        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=1&size=200'
+      ]);
+      expect(result).toEqual({
+        success: true,
+        data: {
+          reminders: [{ habitId, title: 'Later-page habit', reminderTime: '08:00' }]
         }
       });
     });

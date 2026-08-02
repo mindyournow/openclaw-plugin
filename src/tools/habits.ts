@@ -155,6 +155,39 @@ async function getSchedule(client: MynApiClient, input: HabitsInput) {
   return jsonResult(data);
 }
 
+interface HabitReminderTask {
+  id: string;
+  title?: string;
+  taskType?: string;
+  reminderEnabled?: boolean;
+  reminderTime?: string;
+}
+
+async function listHabitReminders(client: MynApiClient) {
+  const pageSize = 200;
+  const tasks: HabitReminderTask[] = [];
+
+  for (let page = 0; ; page += 1) {
+    const data = await client.get<HabitReminderTask[] | { tasks: HabitReminderTask[] }>(
+      `/api/v2/unified-tasks?type=HABIT&page=${page}&size=${pageSize}`
+    );
+    const pageTasks = Array.isArray(data) ? data : data.tasks;
+    if (!Array.isArray(pageTasks)) {
+      throw new Error('Unified-task pagination returned an unexpected response shape');
+    }
+    tasks.push(...pageTasks);
+    if (pageTasks.length < pageSize) break;
+  }
+
+  return tasks
+    .filter(task => task.taskType === 'HABIT' && task.reminderEnabled)
+    .map(task => ({
+      habitId: task.id,
+      title: task.title,
+      reminderTime: task.reminderTime
+    }));
+}
+
 async function manageReminders(client: MynApiClient, input: HabitsInput) {
   if (input.habitId) {
     const path = `/api/v2/unified-tasks/${input.habitId}`;
@@ -178,30 +211,7 @@ async function manageReminders(client: MynApiClient, input: HabitsInput) {
     });
   }
 
-  const data = await client.get<Array<{
-    id: string;
-    title?: string;
-    taskType?: string;
-    reminderEnabled?: boolean;
-    reminderTime?: string;
-  }> | {
-    tasks: Array<{
-      id: string;
-      title?: string;
-      taskType?: string;
-      reminderEnabled?: boolean;
-      reminderTime?: string;
-    }>;
-  }>('/api/v2/unified-tasks?type=HABIT');
-  const tasks = Array.isArray(data) ? data : data.tasks;
-  const reminders = tasks
-    .filter(task => task.taskType === 'HABIT' && task.reminderEnabled)
-    .map(task => ({
-      habitId: task.id,
-      title: task.title,
-      reminderTime: task.reminderTime
-    }));
-  return jsonResult({ reminders });
+  return jsonResult({ reminders: await listHabitReminders(client) });
 }
 
 export function registerHabitsTool(api: OpenClawPluginApi, client: MynApiClient): void {
