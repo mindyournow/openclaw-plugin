@@ -216,11 +216,13 @@ action: members | invite | chores | chore_schedule | chore_complete
 ```
 
 ### myn_projects
-Manage projects and categories.
+Browse MYN collections and file tasks into them.
 
 ```yaml
-action: list | get | create | move_task
+action: list | get | move_task
 ```
+
+**Collections, not projects:** MYN has twelve fixed collections that cannot be created or deleted. Use `move_task` to re-file a task; real user-named projects are planned separately.
 
 ### myn_planning
 AI-powered planning and scheduling.
