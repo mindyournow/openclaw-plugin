@@ -183,6 +183,7 @@ describe('myn_habits', () => {
         status: 200,
         json: () => Promise.resolve({
           id: habitId,
+          taskType: 'HABIT',
           reminderEnabled: true,
           reminderTime: '08:00'
         })
@@ -201,6 +202,39 @@ describe('myn_habits', () => {
         success: true,
         data: { habitId, reminderEnabled: true, reminderTime: '08:00' }
       });
+    });
+
+    it.each(['TASK', 'CHORE'])('rejects a %s reminder read', async taskType => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: habitId, taskType })
+      });
+
+      const result = await executeHabits(client, { action: 'reminders', habitId });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toContain('must reference a HABIT');
+    });
+
+    it.each(['TASK', 'CHORE'])('rejects a %s reminder write before PATCH', async taskType => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: habitId, taskType, stateHash: 'hash-v1' })
+      });
+
+      const result = await executeHabits(client, {
+        action: 'reminders',
+        habitId,
+        enableReminders: true
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][1].method).toBe('GET');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toContain('must reference a HABIT');
     });
 
     it.each([
@@ -273,12 +307,18 @@ describe('myn_habits', () => {
           }]
         })
       });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ tasks: firstPage })
+      });
 
       const result = await executeHabits(client, { action: 'reminders' });
 
       expect(mockFetch.mock.calls.map(call => call[0])).toEqual([
         'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=0&size=200',
-        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=1&size=200'
+        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=1&size=200',
+        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT&page=0&size=200'
       ]);
       expect(result).toEqual({
         success: true,
@@ -288,11 +328,83 @@ describe('myn_habits', () => {
       });
     });
 
+    it('fails when a full unified-task page repeats', async () => {
+      const repeatedPage = Array.from({ length: 200 }, (_, index) => ({
+        id: `habit-${index}`,
+        taskType: 'HABIT'
+      }));
+      for (let call = 0; call < 2; call += 1) {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ tasks: repeatedPage })
+        });
+      }
+
+      const result = await executeHabits(client, { action: 'reminders' });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toContain('pagination did not advance');
+    });
+
+    it('deduplicates IDs when page boundaries overlap', async () => {
+      const firstPage = Array.from({ length: 200 }, (_, index) => ({
+        id: `habit-${index}`,
+        taskType: 'HABIT',
+        reminderEnabled: false
+      }));
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ tasks: firstPage })
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          tasks: [
+            {
+              id: 'habit-199',
+              title: 'Updated boundary habit',
+              taskType: 'HABIT',
+              reminderEnabled: true,
+              reminderTime: '07:00'
+            },
+            {
+              id: habitId,
+              title: 'Later-page habit',
+              taskType: 'HABIT',
+              reminderEnabled: true,
+              reminderTime: '08:00'
+            }
+          ]
+        })
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ tasks: firstPage })
+      });
+
+      const result = await executeHabits(client, { action: 'reminders' });
+
+      expect(result).toEqual({
+        success: true,
+        data: {
+          reminders: [
+            { habitId: 'habit-199', title: 'Updated boundary habit', reminderTime: '07:00' },
+            { habitId, title: 'Later-page habit', reminderTime: '08:00' }
+          ]
+        }
+      });
+    });
+
     it('writes real reminder fields through guardedPatch', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ id: habitId, stateHash: 'hash-v1' })
+        json: () => Promise.resolve({ id: habitId, taskType: 'HABIT', stateHash: 'hash-v1' })
       });
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -319,19 +431,24 @@ describe('myn_habits', () => {
       expect(result.success).toBe(true);
     });
 
-    it('retries one conflict with the current state hash', async () => {
+    it('re-reads and revalidates before retrying one conflict', async () => {
       vi.useFakeTimers();
       try {
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ id: habitId, stateHash: 'hash-v1' })
+          json: () => Promise.resolve({ id: habitId, taskType: 'HABIT', stateHash: 'hash-v1' })
         });
         mockFetch.mockResolvedValueOnce({
           ok: false,
           status: 409,
           statusText: 'Conflict',
-          text: () => Promise.resolve(JSON.stringify({ currentStateHash: 'hash-v2' }))
+          text: () => Promise.resolve(JSON.stringify({ currentStateHash: 'unchecked-hash' }))
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: habitId, taskType: 'HABIT', stateHash: 'hash-v2' })
         });
         mockFetch.mockResolvedValueOnce({
           ok: true,
@@ -345,13 +462,73 @@ describe('myn_habits', () => {
           enableReminders: false
         });
 
-        expect(mockFetch).toHaveBeenCalledTimes(3);
+        expect(mockFetch).toHaveBeenCalledTimes(4);
+        expect(mockFetch.mock.calls.map(call => call[1].method)).toEqual([
+          'GET', 'PATCH', 'GET', 'PATCH'
+        ]);
         expect(mockFetch.mock.calls[1][1].headers['X-MYN-State-Hash']).toBe('hash-v1');
-        expect(mockFetch.mock.calls[2][1].headers['X-MYN-State-Hash']).toBe('hash-v2');
+        expect(mockFetch.mock.calls[3][1].headers['X-MYN-State-Hash']).toBe('hash-v2');
         expect(result.success).toBe(true);
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('rejects a conflict retry when the fresh entity is no longer a habit', async () => {
+      vi.useFakeTimers();
+      try {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: habitId, taskType: 'HABIT', stateHash: 'hash-v1' })
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 409,
+          statusText: 'Conflict',
+          text: () => Promise.resolve(JSON.stringify({ currentStateHash: 'unchecked-hash' }))
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: habitId, taskType: 'CHORE', stateHash: 'hash-v2' })
+        });
+
+        const result = await executeHabits(client, {
+          action: 'reminders',
+          habitId,
+          enableReminders: false
+        });
+
+        expect(mockFetch.mock.calls.map(call => call[1].method)).toEqual(['GET', 'PATCH', 'GET']);
+        expect(result.success).toBe(false);
+        if (!result.success) expect(result.error).toContain('must reference a HABIT');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('fails clearly at the defensive pagination ceiling', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        const page = Number(new URL(url).searchParams.get('page'));
+        return {
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            tasks: Array.from({ length: 200 }, (_, index) => ({
+              id: `page-${page}-habit-${index}`,
+              taskType: 'HABIT'
+            }))
+          })
+        };
+      });
+
+      const result = await executeHabits(client, { action: 'reminders' });
+
+      expect(mockFetch).toHaveBeenCalledTimes(100);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toContain('100-page safety limit');
+      mockFetch.mockReset();
     });
   });
 });

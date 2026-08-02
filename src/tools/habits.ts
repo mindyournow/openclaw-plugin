@@ -163,29 +163,75 @@ interface HabitReminderTask {
   reminderTime?: string;
 }
 
+function validateHabitTask(task: unknown): void {
+  if (
+    typeof task !== 'object' ||
+    task === null ||
+    (task as { taskType?: unknown }).taskType !== 'HABIT'
+  ) {
+    throw new Error('habitId must reference a HABIT');
+  }
+}
+
+async function getReminderPage(client: MynApiClient, page: number, pageSize: number) {
+  const data = await client.get<HabitReminderTask[] | { tasks: HabitReminderTask[] }>(
+    `/api/v2/unified-tasks?type=HABIT&page=${page}&size=${pageSize}`
+  );
+  const tasks = Array.isArray(data) ? data : data.tasks;
+  if (!Array.isArray(tasks)) {
+    throw new Error('Unified-task pagination returned an unexpected response shape');
+  }
+  if (tasks.some(task => typeof task.id !== 'string' || task.id.length === 0)) {
+    throw new Error('Unified-task pagination returned a task without an ID');
+  }
+  return tasks;
+}
+
 async function listHabitReminders(client: MynApiClient) {
   const pageSize = 200;
-  const tasks: HabitReminderTask[] = [];
+  const maxPages = 100;
+  const maxRecords = pageSize * maxPages;
+  const tasksById = new Map<string, HabitReminderTask>();
+  const seenPageSignatures = new Set<string>();
+  let firstPageSignature: string | undefined;
 
-  for (let page = 0; ; page += 1) {
-    const data = await client.get<HabitReminderTask[] | { tasks: HabitReminderTask[] }>(
-      `/api/v2/unified-tasks?type=HABIT&page=${page}&size=${pageSize}`
-    );
-    const pageTasks = Array.isArray(data) ? data : data.tasks;
-    if (!Array.isArray(pageTasks)) {
-      throw new Error('Unified-task pagination returned an unexpected response shape');
+  for (let page = 0; page < maxPages; page += 1) {
+    const pageTasks = await getReminderPage(client, page, pageSize);
+    const signature = JSON.stringify(pageTasks.map(task => task.id));
+    if (page === 0) firstPageSignature = signature;
+    if (seenPageSignatures.has(signature)) {
+      throw new Error('Unified-task pagination did not advance');
     }
-    tasks.push(...pageTasks);
-    if (pageTasks.length < pageSize) break;
+    seenPageSignatures.add(signature);
+
+    const newIds = pageTasks.filter(task => !tasksById.has(task.id));
+    if (pageTasks.length === pageSize && newIds.length === 0) {
+      throw new Error('Unified-task pagination did not advance');
+    }
+    if (tasksById.size + newIds.length > maxRecords) {
+      throw new Error(`Unified-task pagination exceeded the ${maxRecords}-record safety limit`);
+    }
+    for (const task of pageTasks) tasksById.set(task.id, task);
+
+    if (pageTasks.length < pageSize) {
+      if (page > 0) {
+        const checkPage = await getReminderPage(client, 0, pageSize);
+        const checkSignature = JSON.stringify(checkPage.map(task => task.id));
+        if (checkSignature !== firstPageSignature) {
+          throw new Error('Unified-task collection changed during pagination');
+        }
+      }
+      return Array.from(tasksById.values())
+        .filter(task => task.taskType === 'HABIT' && task.reminderEnabled)
+        .map(task => ({
+          habitId: task.id,
+          title: task.title,
+          reminderTime: task.reminderTime
+        }));
+    }
   }
 
-  return tasks
-    .filter(task => task.taskType === 'HABIT' && task.reminderEnabled)
-    .map(task => ({
-      habitId: task.id,
-      title: task.title,
-      reminderTime: task.reminderTime
-    }));
+  throw new Error(`Unified-task pagination exceeded the ${maxPages}-page safety limit`);
 }
 
 async function manageReminders(client: MynApiClient, input: HabitsInput) {
@@ -196,14 +242,12 @@ async function manageReminders(client: MynApiClient, input: HabitsInput) {
       if (input.enableReminders !== undefined) updates.reminderEnabled = input.enableReminders;
       if (input.reminderTime !== undefined) updates.reminderTime = input.reminderTime;
 
-      const data = await guardedPatch<unknown>(client, path, updates, path);
+      const data = await guardedPatch<unknown>(client, path, updates, path, validateHabitTask);
       return jsonResult(data);
     }
 
-    const task = await client.get<{
-      reminderEnabled?: boolean;
-      reminderTime?: string;
-    }>(path);
+    const task = await client.get<HabitReminderTask>(path);
+    validateHabitTask(task);
     return jsonResult({
       habitId: input.habitId,
       reminderEnabled: Boolean(task.reminderEnabled),

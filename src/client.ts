@@ -170,15 +170,17 @@ interface StaleStateErrorBody {
  * Flow:
  * 1. GET `getPath` (defaults to `path`) to obtain current `stateHash`
  * 2. PATCH `path` with `X-MYN-State-Hash` header
- * 3. On 409 (stale state): use the currentStateHash from the 409 body and retry once
+ * 3. On 409 (stale state): use currentStateHash, or re-read and revalidate when a
+ *    representation validator is supplied, then retry once
  */
 export async function guardedPatch<T>(
   client: MynApiClient,
   path: string,
   body: unknown,
-  getPath?: string
+  getPath?: string,
+  validateCurrent?: (current: unknown) => void
 ): Promise<T> {
-  return guardedWrite<T>(client, 'PATCH', path, body, getPath);
+  return guardedWrite<T>(client, 'PATCH', path, body, getPath, validateCurrent);
 }
 
 /**
@@ -221,12 +223,14 @@ async function guardedWrite<T>(
   method: 'PATCH' | 'PUT' | 'POST' | 'DELETE',
   path: string,
   body: unknown,
-  getPath?: string
+  getPath?: string,
+  validateCurrent?: (current: unknown) => void
 ): Promise<T> {
   const readPath = getPath ?? path;
 
   // Step 1: Read the current state to get the stateHash
   const current = await client.get<StateHashResponse>(readPath);
+  validateCurrent?.(current);
   let stateHash = current?.stateHash;
 
   // Step 2: Attempt the write with the state hash
@@ -234,20 +238,21 @@ async function guardedWrite<T>(
     return await writeWithHash<T>(client, method, path, body, stateHash);
   } catch (err) {
     if (err instanceof MynApiError && err.statusCode === 409) {
-      // Step 3: On conflict, extract current hash from 409 body and retry once
-      try {
+      // Validated writes must inspect the exact fresh representation whose hash authorizes the retry.
+      if (validateCurrent) {
+        const fresh = await client.get<StateHashResponse>(readPath);
+        validateCurrent(fresh);
+        stateHash = fresh?.stateHash;
+      } else {
         const errorBody: StaleStateErrorBody = err.responseBody ? JSON.parse(err.responseBody) : {};
         if (errorBody.currentStateHash) {
           stateHash = errorBody.currentStateHash;
         } else {
-          // Re-read to get fresh hash
           const fresh = await client.get<StateHashResponse>(readPath);
           stateHash = fresh?.stateHash;
         }
-        return await writeWithHash<T>(client, method, path, body, stateHash);
-      } catch (retryErr) {
-        throw retryErr;
       }
+      return await writeWithHash<T>(client, method, path, body, stateHash);
     }
     throw err;
   }
