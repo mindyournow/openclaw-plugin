@@ -85,44 +85,67 @@ async function remember(client: MynApiClient, input: MemoryInput) {
   return jsonResult(data);
 }
 
-/** Maximum number of memories to fetch from the backend */
+/** Maximum number of memories to fetch for a list response. */
 const MEMORY_FETCH_LIMIT = 50;
+const MEMORY_LOOKUP_PAGE_SIZE = 200;
+const MEMORY_LOOKUP_MAX_PAGES = 50;
+
+type MemoryDto = {
+  id: string;
+  type: string;
+  content: string;
+  confidence: number;
+  sourceConversationId: string | null;
+  sourceGoalId: string | null;
+  createdAt: string;
+  lastReinforcedAt: string | null;
+  reinforcementCount: number;
+  lastUsedAt: string | null;
+  usageCount: number;
+  topics: string[];
+  hasEmbedding: boolean;
+  confidenceLevel: string;
+};
+
+type MemoryPage = {
+  memories: MemoryDto[];
+  totalCount: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
 
 async function recall(client: MynApiClient, input: MemoryInput) {
-  const params = new URLSearchParams({ limit: String(input.limit ?? MEMORY_FETCH_LIMIT) });
-  const data = await client.get<{
-    memories: Array<{
-      id: string;
-      type: string;
-      content: string;
-      confidence: number;
-      sourceConversationId: string | null;
-      sourceGoalId: string | null;
-      createdAt: string;
-      lastReinforcedAt: string | null;
-      reinforcementCount: number;
-      lastUsedAt: string | null;
-      usageCount: number;
-      topics: string[];
-      hasEmbedding: boolean;
-      confidenceLevel: string;
-    }>;
-    totalCount: number;
-    limit: number;
-    offset: number;
-    hasMore: boolean;
-  }>(`/api/v1/customers/memories?${params.toString()}`);
-  const memories = data.memories;
-
   if (input.memoryId) {
-    const match = memories.find(m => m.id === input.memoryId);
-    if (!match) {
-      return errorResult(`Memory not found: ${input.memoryId}`);
+    let offset = 0;
+    for (let page = 0; page < MEMORY_LOOKUP_MAX_PAGES; page += 1) {
+      const params = new URLSearchParams({
+        limit: String(MEMORY_LOOKUP_PAGE_SIZE),
+        offset: String(offset)
+      });
+      const data = await client.get<MemoryPage>(
+        `/api/v1/customers/memories?${params.toString()}`
+      );
+      const match = data.memories.find(memory => memory.id === input.memoryId);
+      if (match) {
+        return jsonResult(match);
+      }
+      if (!data.hasMore) {
+        return errorResult(`Memory not found: ${input.memoryId}`);
+      }
+      if (data.memories.length === 0) {
+        return errorResult('Memory lookup pagination did not advance');
+      }
+      offset += data.memories.length;
     }
-    return jsonResult(match);
+    return errorResult('Memory lookup reached its 50-page safety cap before completion');
   }
 
-  return jsonResult(memories);
+  const params = new URLSearchParams({ limit: String(input.limit ?? MEMORY_FETCH_LIMIT) });
+  const data = await client.get<MemoryPage>(
+    `/api/v1/customers/memories?${params.toString()}`
+  );
+  return jsonResult(data.memories);
 }
 
 async function forget(client: MynApiClient, input: MemoryInput) {

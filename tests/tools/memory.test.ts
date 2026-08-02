@@ -139,7 +139,7 @@ describe('myn_memory', () => {
             memoryDto('550e8400-e29b-41d4-a716-446655440000', 'Specific memory')
           ],
           totalCount: 1,
-          limit: 50,
+          limit: 200,
           offset: 0,
           hasMore: false
         })
@@ -154,6 +154,48 @@ describe('myn_memory', () => {
       if (result.success) {
         expect(result.data).toHaveProperty('id', '550e8400-e29b-41d4-a716-446655440000');
       }
+      expect(mockFetch.mock.calls[0][0]).toContain('limit=200&offset=0');
+    });
+
+    it('should scan later pages for an id regardless of the list limit', async () => {
+      const targetId = '550e8400-e29b-41d4-a716-446655440000';
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            memories: [memoryDto('other', 'Other memory')],
+            totalCount: 2,
+            limit: 200,
+            offset: 0,
+            hasMore: true
+          })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            memories: [memoryDto(targetId, 'Specific memory')],
+            totalCount: 2,
+            limit: 200,
+            offset: 1,
+            hasMore: false
+          })
+        });
+
+      const result = await executeMemory(client, {
+        action: 'recall',
+        memoryId: targetId,
+        limit: 1
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveProperty('id', targetId);
+      }
+      expect(mockFetch.mock.calls).toHaveLength(2);
+      expect(mockFetch.mock.calls[0][0]).toContain('limit=200&offset=0');
+      expect(mockFetch.mock.calls[1][0]).toContain('limit=200&offset=1');
     });
   });
 
