@@ -175,61 +175,144 @@ describe('myn_habits', () => {
   });
 
   describe('reminders action', () => {
-    it('should list all reminders', async () => {
+    const habitId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('reads reminder settings from the unified task', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({
-          reminders: [
-            { habitId: '1', title: 'Exercise', enabled: true, reminderTime: '08:00', reminderDays: [1, 2, 3, 4, 5] }
-          ]
+          id: habitId,
+          reminderEnabled: true,
+          reminderTime: '08:00'
         })
+      });
+
+      const result = await executeHabits(client, {
+        action: 'reminders',
+        habitId
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.mindyournow.com/api/v2/unified-tasks/${habitId}`,
+        expect.any(Object)
+      );
+      expect(result).toEqual({
+        success: true,
+        data: { habitId, reminderEnabled: true, reminderTime: '08:00' }
+      });
+    });
+
+    it.each([
+      ['bare', (tasks: unknown[]) => tasks],
+      ['wrapped', (tasks: unknown[]) => ({ tasks })]
+    ])('lists only enabled habits from a %s unified-tasks response', async (_shape, wrap) => {
+      const tasks = [
+        {
+          id: habitId,
+          title: 'Exercise',
+          taskType: 'HABIT',
+          reminderEnabled: true,
+          reminderTime: '08:00'
+        },
+        {
+          id: 'disabled-habit',
+          title: 'Read',
+          taskType: 'HABIT',
+          reminderEnabled: false,
+          reminderTime: '20:00'
+        },
+        {
+          id: 'enabled-chore',
+          title: 'Water plants',
+          taskType: 'CHORE',
+          reminderEnabled: true,
+          reminderTime: '09:00'
+        }
+      ];
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(wrap(tasks))
       });
 
       const result = await executeHabits(client, { action: 'reminders' });
 
-      expect(result.success).toBe(true);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        'https://api.mindyournow.com/api/v2/unified-tasks?type=HABIT'
+      );
+      expect(result).toEqual({
+        success: true,
+        data: {
+          reminders: [{ habitId, title: 'Exercise', reminderTime: '08:00' }]
+        }
+      });
     });
 
-    it('should get specific habit reminders', async () => {
+    it('writes real reminder fields through guardedPatch', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({
-          habitId: '1',
-          remindersEnabled: true,
-          reminderTime: '08:00',
-          reminderDays: [1, 2, 3, 4, 5]
-        })
+        json: () => Promise.resolve({ id: habitId, stateHash: 'hash-v1' })
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ updated: true })
       });
 
       const result = await executeHabits(client, {
         action: 'reminders',
-        habitId: '550e8400-e29b-41d4-a716-446655440000'
-      });
-
-      expect(result.success).toBe(true);
-    });
-
-    it('should update reminder settings', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({
-          habitId: '1',
-          remindersEnabled: true,
-          reminderTime: '07:30'
-        })
-      });
-
-      const result = await executeHabits(client, {
-        action: 'reminders',
-        habitId: '550e8400-e29b-41d4-a716-446655440000',
+        habitId,
         enableReminders: true,
         reminderTime: '07:30'
       });
 
+      expect(mockFetch.mock.calls.map(call => call[1].method)).toEqual(['GET', 'PATCH']);
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        `https://api.mindyournow.com/api/v2/unified-tasks/${habitId}`
+      );
+      expect(mockFetch.mock.calls[1][1].headers['X-MYN-State-Hash']).toBe('hash-v1');
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+        reminderEnabled: true,
+        reminderTime: '07:30'
+      });
       expect(result.success).toBe(true);
+    });
+
+    it('retries one conflict with the current state hash', async () => {
+      vi.useFakeTimers();
+      try {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: habitId, stateHash: 'hash-v1' })
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 409,
+          statusText: 'Conflict',
+          text: () => Promise.resolve(JSON.stringify({ currentStateHash: 'hash-v2' }))
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ updated: true })
+        });
+
+        const result = await executeHabits(client, {
+          action: 'reminders',
+          habitId,
+          enableReminders: false
+        });
+
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+        expect(mockFetch.mock.calls[1][1].headers['X-MYN-State-Hash']).toBe('hash-v1');
+        expect(mockFetch.mock.calls[2][1].headers['X-MYN-State-Hash']).toBe('hash-v2');
+        expect(result.success).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

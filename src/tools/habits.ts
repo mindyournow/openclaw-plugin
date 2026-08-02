@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPatch } from '../client.js';
 
 export const HabitsInputSchema = Type.Object({
   action: Type.Union([
@@ -25,8 +25,13 @@ export const HabitsInputSchema = Type.Object({
   // schedule parameters
   dateRange: Type.Optional(Type.Number({ default: 7, description: 'Number of days to look ahead' })),
   // reminders parameters
-  enableReminders: Type.Optional(Type.Boolean()),
-  reminderTime: Type.Optional(Type.String({ pattern: '^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$' }))
+  enableReminders: Type.Optional(Type.Boolean({
+    description: "Set reminderEnabled on the habit's unified task entity."
+  })),
+  reminderTime: Type.Optional(Type.String({
+    pattern: '^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$',
+    description: "Set reminderTime on the habit's unified task entity."
+  }))
 });
 
 export type HabitsInput = typeof HabitsInputSchema.static;
@@ -152,49 +157,59 @@ async function getSchedule(client: MynApiClient, input: HabitsInput) {
 
 async function manageReminders(client: MynApiClient, input: HabitsInput) {
   if (input.habitId) {
-    // Manage reminders for specific habit
-    if (input.enableReminders === undefined && !input.reminderTime) {
-      // Get current reminder settings
-      const data = await client.get<{
-        habitId: string;
-        remindersEnabled: boolean;
-        reminderTime?: string;
-        reminderDays: number[];
-      }>(`/api/habits/reminders/${input.habitId}`);
+    const path = `/api/v2/unified-tasks/${input.habitId}`;
+    if (input.enableReminders !== undefined || input.reminderTime !== undefined) {
+      const updates: Record<string, unknown> = {};
+      if (input.enableReminders !== undefined) updates.reminderEnabled = input.enableReminders;
+      if (input.reminderTime !== undefined) updates.reminderTime = input.reminderTime;
+
+      const data = await guardedPatch<unknown>(client, path, updates, path);
       return jsonResult(data);
     }
 
-    // Update reminder settings
-    const body: Record<string, unknown> = {};
-    if (input.enableReminders !== undefined) body.enabled = input.enableReminders;
-    if (input.reminderTime) body.time = input.reminderTime;
-
-    const data = await client.put<{
-      habitId: string;
-      remindersEnabled: boolean;
+    const task = await client.get<{
+      reminderEnabled?: boolean;
       reminderTime?: string;
-    }>(`/api/habits/reminders/${input.habitId}`, body);
-    return jsonResult(data);
+    }>(path);
+    return jsonResult({
+      habitId: input.habitId,
+      reminderEnabled: Boolean(task.reminderEnabled),
+      reminderTime: task.reminderTime
+    });
   }
 
-  // List all habit reminders
-  const data = await client.get<{
-    reminders: Array<{
-      habitId: string;
-      title: string;
-      enabled: boolean;
+  const data = await client.get<Array<{
+    id: string;
+    title?: string;
+    taskType?: string;
+    reminderEnabled?: boolean;
+    reminderTime?: string;
+  }> | {
+    tasks: Array<{
+      id: string;
+      title?: string;
+      taskType?: string;
+      reminderEnabled?: boolean;
       reminderTime?: string;
-      reminderDays: number[];
     }>;
-  }>('/api/habits/reminders');
-  return jsonResult(data);
+  }>('/api/v2/unified-tasks?type=HABIT');
+  const tasks = Array.isArray(data) ? data : data.tasks;
+  const reminders = tasks
+    .filter(task => task.taskType === 'HABIT' && task.reminderEnabled)
+    .map(task => ({
+      habitId: task.id,
+      title: task.title,
+      reminderTime: task.reminderTime
+    }));
+  return jsonResult({ reminders });
 }
 
 export function registerHabitsTool(api: OpenClawPluginApi, client: MynApiClient): void {
   api.registerTool({
     id: 'myn_habits',
     name: 'MYN Habits',
-    description: 'Track habits, streaks, and reminders. Actions: streaks, skip, chains, schedule, reminders.',
+    description: 'Track habits, streaks, and reminders. Actions: streaks, skip, chains, schedule, reminders. ' +
+      "Reminder settings live on the habit's unified task entity.",
     inputSchema: HabitsInputSchema,
     async execute(input: unknown) {
       return executeHabits(client, input as HabitsInput);
