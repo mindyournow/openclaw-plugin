@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { errorResult, guardedPut, jsonResult } from '../client.js';
 
 export const ProjectsInputSchema = Type.Object({
   action: Type.Union([
@@ -107,12 +107,17 @@ async function moveTask(client: MynApiClient, input: ProjectsInput) {
     return errorResult('targetProjectId is required for move_task action');
   }
 
-  const data = await client.put<{
+  const data = await guardedPut<{
     taskId: string;
     previousProjectId?: string;
     newProjectId: string;
     moved: boolean;
-  }>(`/api/project/${input.targetProjectId}/moveTaskToProject/${input.taskId}`);
+  }>(
+    client,
+    `/api/project/${input.targetProjectId}/moveTaskToProject/${input.taskId}`,
+    undefined,
+    `/api/v2/unified-tasks/${input.taskId}`
+  );
 
   return jsonResult(data);
 }

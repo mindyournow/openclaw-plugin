@@ -60,6 +60,56 @@ describe('myn_projects', () => {
     expect(mockFetch.mock.calls[0][0]).toContain('limit=25');
   });
 
+  it('reads the task state hash before moving it', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          id: '22222222-2222-4222-8222-222222222222',
+          stateHash: 'task-hash-v1'
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          taskId: '22222222-2222-4222-8222-222222222222',
+          newProjectId: '11111111-1111-4111-8111-111111111111',
+          moved: true
+        })
+      });
+
+    const result = await executeProjects(client, {
+      action: 'move_task',
+      taskId: '22222222-2222-4222-8222-222222222222',
+      targetProjectId: '11111111-1111-4111-8111-111111111111'
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      'https://api.mindyournow.com/api/v2/unified-tasks/22222222-2222-4222-8222-222222222222'
+    );
+    expect(mockFetch.mock.calls[0][1]).toMatchObject({ method: 'GET' });
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      'https://api.mindyournow.com/api/project/11111111-1111-4111-8111-111111111111/moveTaskToProject/22222222-2222-4222-8222-222222222222'
+    );
+    expect(mockFetch.mock.calls[1][1]).toMatchObject({
+      method: 'PUT',
+      headers: expect.objectContaining({
+        'X-MYN-State-Hash': 'task-hash-v1'
+      })
+    });
+    expect(result).toEqual({
+      success: true,
+      data: {
+        taskId: '22222222-2222-4222-8222-222222222222',
+        newProjectId: '11111111-1111-4111-8111-111111111111',
+        moved: true
+      }
+    });
+  });
+
   it('accepts exactly list, get, and move_task actions', () => {
     expect(Value.Check(ProjectsInputSchema, { action: 'list' })).toBe(true);
     expect(Value.Check(ProjectsInputSchema, { action: 'get' })).toBe(true);
