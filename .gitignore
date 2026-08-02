@@ -8,6 +8,8 @@ dist/
 
 # Testing
 coverage/
+__pycache__/
+*.pyc
 
 # Environment variables
 .env
