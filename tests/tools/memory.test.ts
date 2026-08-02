@@ -29,7 +29,7 @@ describe('myn_memory', () => {
   beforeEach(() => {
     globalThis.fetch = mockFetch;
     client = new MynApiClient('https://api.mindyournow.com', 'test-key');
-    mockFetch.mockClear();
+    mockFetch.mockReset();
   });
 
   describe('remember action', () => {
@@ -164,8 +164,10 @@ describe('myn_memory', () => {
           ok: true,
           status: 200,
           json: () => Promise.resolve({
-            memories: [memoryDto('other', 'Other memory')],
-            totalCount: 2,
+            memories: Array.from({ length: 200 }, (_, index) =>
+              memoryDto(`other-${index}`, `Other memory ${index}`)
+            ),
+            totalCount: 201,
             limit: 200,
             offset: 0,
             hasMore: true
@@ -176,9 +178,9 @@ describe('myn_memory', () => {
           status: 200,
           json: () => Promise.resolve({
             memories: [memoryDto(targetId, 'Specific memory')],
-            totalCount: 2,
+            totalCount: 201,
             limit: 200,
-            offset: 1,
+            offset: 200,
             hasMore: false
           })
         });
@@ -195,7 +197,43 @@ describe('myn_memory', () => {
       }
       expect(mockFetch.mock.calls).toHaveLength(2);
       expect(mockFetch.mock.calls[0][0]).toContain('limit=200&offset=0');
-      expect(mockFetch.mock.calls[1][0]).toContain('limit=200&offset=1');
+      expect(mockFetch.mock.calls[1][0]).toContain('limit=200&offset=200');
+    });
+
+    it('should search beyond the former ten-thousand-memory cap', async () => {
+      const targetId = 'target-after-old-cap';
+      mockFetch.mockImplementation((url: string) => {
+        const offset = Number(new URL(url).searchParams.get('offset'));
+        const end = Math.min(offset + 200, 10_001);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            memories: Array.from({ length: end - offset }, (_, index) => {
+              const absoluteIndex = offset + index;
+              return memoryDto(
+                absoluteIndex === 10_000 ? targetId : `other-${absoluteIndex}`,
+                `Memory ${absoluteIndex}`
+              );
+            }),
+            totalCount: 10_001,
+            limit: 200,
+            offset,
+            hasMore: end < 10_001
+          })
+        });
+      });
+
+      const result = await executeMemory(client, {
+        action: 'recall',
+        memoryId: targetId
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveProperty('id', targetId);
+      }
+      expect(mockFetch.mock.calls).toHaveLength(51);
     });
   });
 
