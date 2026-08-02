@@ -4,13 +4,13 @@
  * MIN-801: Now wired to real backend endpoints:
  * - remember → POST /api/v1/agent/memories
  * - search   → GET /api/v1/agent/memories/search
- * - recall   → GET /api/v1/customers/memories (unchanged)
+ * - recall   → GET /api/v1/customers/memories or /memories/{memoryId}
  * - forget   → DELETE /api/v1/customers/memories/{id} (unchanged)
  */
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { MynApiError, jsonResult, errorResult } from '../client.js';
 
 export const MemoryInputSchema = Type.Object({
   action: Type.Union([
@@ -87,7 +87,6 @@ async function remember(client: MynApiClient, input: MemoryInput) {
 
 /** Maximum number of memories to fetch for a list response. */
 const MEMORY_FETCH_LIMIT = 50;
-const MEMORY_LOOKUP_PAGE_SIZE = 200;
 
 type MemoryDto = {
   id: string;
@@ -116,47 +115,20 @@ type MemoryPage = {
 
 async function recall(client: MynApiClient, input: MemoryInput) {
   if (input.memoryId) {
-    let offset = 0;
-    let page = 0;
-    let expectedPages: number | null = null;
-    const seenOffsets = new Set<number>();
-
-    while (expectedPages === null || page < expectedPages) {
-      if (seenOffsets.has(offset)) {
-        return errorResult('Memory lookup pagination did not advance');
-      }
-      seenOffsets.add(offset);
-
-      const params = new URLSearchParams({
-        limit: String(MEMORY_LOOKUP_PAGE_SIZE),
-        offset: String(offset)
-      });
-      const data = await client.get<MemoryPage>(
-        `/api/v1/customers/memories?${params.toString()}`
+    try {
+      const data = await client.get<MemoryDto>(
+        `/api/v1/customers/memories/${encodeURIComponent(input.memoryId)}`
       );
-      if (expectedPages === null) {
-        if (!Number.isSafeInteger(data.totalCount) || data.totalCount < 0) {
-          return errorResult('Memory lookup returned an invalid totalCount');
-        }
-        expectedPages = Math.max(1, Math.ceil(data.totalCount / MEMORY_LOOKUP_PAGE_SIZE));
+      if (data.id !== input.memoryId) {
+        return errorResult('Memory lookup returned an unexpected id');
       }
-
-      const match = data.memories.find(memory => memory.id === input.memoryId);
-      if (match) {
-        return jsonResult(match);
-      }
-
-      page += 1;
-      if (!data.hasMore) {
+      return jsonResult(data);
+    } catch (error) {
+      if (error instanceof MynApiError && error.statusCode === 404) {
         return errorResult(`Memory not found: ${input.memoryId}`);
       }
-      if (data.memories.length === 0 || page >= expectedPages) {
-        return errorResult('Memory lookup pagination was inconsistent with totalCount');
-      }
-      offset += data.memories.length;
+      throw error;
     }
-
-    return errorResult('Memory lookup pagination was inconsistent with totalCount');
   }
 
   const params = new URLSearchParams({ limit: String(input.limit ?? MEMORY_FETCH_LIMIT) });
