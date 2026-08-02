@@ -21,25 +21,41 @@ describe('myn_tasks', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve([
-          { id: '1', title: 'Task 1' },
-          { id: '2', title: 'Task 2' }
-        ])
+        json: () => Promise.resolve({
+          tasks: [
+            { id: '1', title: 'Task 1' },
+            { id: '2', title: 'Task 2' }
+          ],
+          total: 2,
+          limit: 20,
+          offset: 0,
+          hasMore: false
+        })
       });
 
       const result = await executeTasks(client, { action: 'list' });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(Array.isArray(result.data)).toBe(true);
+        expect(result.data).toEqual([
+          { id: '1', title: 'Task 1' },
+          { id: '2', title: 'Task 2' }
+        ]);
       }
+      expect(mockFetch.mock.calls[0][0]).toContain('limit=20');
     });
 
     it('should list tasks with filters', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve([{ id: '1', priority: 'CRITICAL' }])
+        json: () => Promise.resolve({
+          tasks: [{ id: '1', priority: 'CRITICAL' }],
+          total: 1,
+          limit: 10,
+          offset: 0,
+          hasMore: false
+        })
       });
 
       await executeTasks(client, {

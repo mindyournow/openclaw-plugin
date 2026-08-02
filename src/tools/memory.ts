@@ -4,13 +4,13 @@
  * MIN-801: Now wired to real backend endpoints:
  * - remember → POST /api/v1/agent/memories
  * - search   → GET /api/v1/agent/memories/search
- * - recall   → GET /api/v1/customers/memories (unchanged)
+ * - recall   → GET /api/v1/customers/memories or /memories/{memoryId}
  * - forget   → DELETE /api/v1/customers/memories/{id} (unchanged)
  */
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { MynApiError, jsonResult, errorResult } from '../client.js';
 
 export const MemoryInputSchema = Type.Object({
   action: Type.Union([
@@ -85,33 +85,57 @@ async function remember(client: MynApiClient, input: MemoryInput) {
   return jsonResult(data);
 }
 
-/** Maximum number of memories to fetch from the backend */
+/** Maximum number of memories to fetch for a list response. */
 const MEMORY_FETCH_LIMIT = 50;
 
-async function recall(client: MynApiClient, input: MemoryInput) {
-  const params = new URLSearchParams({ limit: String(MEMORY_FETCH_LIMIT) });
-  const data = await client.get<
-    Array<{
-      memoryId: string;
-      content: string;
-      category: string;
-      tags: string[];
-      importance: string;
-      createdAt: string;
-      accessedAt?: string;
-    }>
-  >(`/api/v1/customers/memories?${params.toString()}`);
+type MemoryDto = {
+  id: string;
+  type: string;
+  content: string;
+  confidence: number;
+  sourceConversationId: string | null;
+  sourceGoalId: string | null;
+  createdAt: string;
+  lastReinforcedAt: string | null;
+  reinforcementCount: number;
+  lastUsedAt: string | null;
+  usageCount: number;
+  topics: string[];
+  hasEmbedding: boolean;
+  confidenceLevel: string;
+};
 
+type MemoryPage = {
+  memories: MemoryDto[];
+  totalCount: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+async function recall(client: MynApiClient, input: MemoryInput) {
   if (input.memoryId) {
-    const memories = Array.isArray(data) ? data : [];
-    const match = memories.find(m => m.memoryId === input.memoryId);
-    if (!match) {
-      return errorResult(`Memory not found: ${input.memoryId}`);
+    try {
+      const data = await client.get<MemoryDto>(
+        `/api/v1/customers/memories/${encodeURIComponent(input.memoryId)}`
+      );
+      if (data.id !== input.memoryId) {
+        return errorResult('Memory lookup returned an unexpected id');
+      }
+      return jsonResult(data);
+    } catch (error) {
+      if (error instanceof MynApiError && error.statusCode === 404) {
+        return errorResult(`Memory not found: ${input.memoryId}`);
+      }
+      throw error;
     }
-    return jsonResult(match);
   }
 
-  return jsonResult(data);
+  const params = new URLSearchParams({ limit: String(input.limit ?? MEMORY_FETCH_LIMIT) });
+  const data = await client.get<MemoryPage>(
+    `/api/v1/customers/memories?${params.toString()}`
+  );
+  return jsonResult(data.memories);
 }
 
 async function forget(client: MynApiClient, input: MemoryInput) {

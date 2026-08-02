@@ -108,6 +108,18 @@ describe('myn_debrief', () => {
       expect(result.success).toBe(true);
     });
 
+    it('should return the empty current response as data', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ current: null })
+      });
+
+      const result = await executeDebrief(client, { action: 'get' });
+
+      expect(result).toEqual({ success: true, data: { current: null } });
+    });
+
     it('should get specific briefing with id', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

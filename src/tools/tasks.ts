@@ -110,12 +110,18 @@ async function listTasks(client: MynApiClient, input: TasksInput) {
   if (input.projectId) params.append('projectId', input.projectId);
   if (input.startDate) params.append('startDate', input.startDate);
   if (input.endDate) params.append('endDate', input.endDate);
-  if (input.limit) params.append('limit', input.limit.toString());
+  params.append('limit', String(input.limit ?? 20));
   if (input.offset) params.append('offset', input.offset.toString());
 
   const queryString = params.toString() ? `?${params.toString()}` : '';
-  const data = await client.get<unknown[]>(`/api/v2/unified-tasks${queryString}`);
-  return jsonResult(data);
+  const data = await client.get<{
+    tasks: unknown[];
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  }>(`/api/v2/unified-tasks${queryString}`);
+  return jsonResult(data.tasks);
 }
 
 async function getTask(client: MynApiClient, input: TasksInput) {

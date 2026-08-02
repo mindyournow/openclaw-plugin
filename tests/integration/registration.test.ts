@@ -28,6 +28,7 @@ const { MynApiClient } = await import('../../src/client.js');
 describe('Plugin Registration', () => {
   let mockApi: {
     registerTool: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
     logger: {
       debug: ReturnType<typeof vi.fn>;
       info: ReturnType<typeof vi.fn>;
@@ -40,6 +41,7 @@ describe('Plugin Registration', () => {
   beforeEach(() => {
     mockApi = {
       registerTool: vi.fn(),
+      on: vi.fn(),
       logger: {
         debug: vi.fn(),
         info: vi.fn(),
@@ -184,6 +186,11 @@ interface OpenClawPluginApi {
     inputSchema: unknown;
     execute: (input: unknown) => Promise<unknown>;
   }): void;
+  on(
+    hookName: string,
+    handler: (...args: unknown[]) => unknown,
+    opts?: { priority?: number }
+  ): void;
   logger: {
     debug(message: string): void;
     info(message: string): void;

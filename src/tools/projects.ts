@@ -57,7 +57,7 @@ export async function executeProjects(
 }
 
 async function listProjects(client: MynApiClient, input: ProjectsInput) {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ limit: '50' });
 
   if (input.includeArchived) params.append('includeArchived', 'true');
   if (input.includeStats) params.append('includeStats', 'true');
@@ -67,21 +67,18 @@ async function listProjects(client: MynApiClient, input: ProjectsInput) {
   const data = await client.get<{
     projects: Array<{
       id: string;
-      name: string;
-      description?: string;
-      color?: string;
-      icon?: string;
-      parentId?: string;
-      createdAt: string;
-      stats?: {
-        totalTasks: number;
-        completedTasks: number;
-        criticalTasks: number;
-      };
+      type: string;
+      customName?: string;
+      customEmoji?: string;
+      hideTasksInMainList: boolean;
     }>;
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
   }>(`/api/project/defaults${queryString}`);
 
-  return jsonResult(data);
+  return jsonResult(data.projects);
 }
 
 async function getProject(client: MynApiClient, input: ProjectsInput) {

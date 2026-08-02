@@ -386,7 +386,8 @@ const client = new MynApiClient(
 );
 
 // Make authenticated requests
-const tasks = await client.get('/api/v2/unified-tasks');
+const taskPage = await client.get('/api/v2/unified-tasks?limit=20');
+const tasks = taskPage.tasks;
 const newTask = await client.post('/api/v2/unified-tasks', { ... });
 ```
 

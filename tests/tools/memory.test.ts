@@ -9,28 +9,52 @@ import { MynApiClient } from '../../src/client.js';
 describe('myn_memory', () => {
   const mockFetch = vi.fn();
   let client: MynApiClient;
+  const memoryDto = (id: string, content: string) => ({
+    id,
+    type: 'PREFERENCE',
+    content,
+    confidence: 0.9,
+    sourceConversationId: 'conversation-1',
+    sourceGoalId: null,
+    createdAt: '2026-03-01T10:00:00Z',
+    lastReinforcedAt: null,
+    reinforcementCount: 1,
+    lastUsedAt: null,
+    usageCount: 0,
+    topics: ['preference'],
+    hasEmbedding: true,
+    confidenceLevel: 'high'
+  });
 
   beforeEach(() => {
     globalThis.fetch = mockFetch;
     client = new MynApiClient('https://api.mindyournow.com', 'test-key');
-    mockFetch.mockClear();
+    mockFetch.mockReset();
   });
 
   describe('remember action', () => {
-    it('should return error — direct memory creation not supported by backend', async () => {
-      // The backend has no POST /memories endpoint; memories are created via AI conversations.
+    it('should create a memory through the agent endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          id: 'memory-1',
+          type: 'PREFERENCE',
+          content: 'User prefers morning meetings',
+          confidence: 1,
+          duplicate: false,
+          message: 'Created'
+        })
+      });
+
       const result = await executeMemory(client, {
         action: 'remember',
         content: 'User prefers morning meetings',
-        category: 'user_preference',
-        tags: ['meetings', 'preferences'],
-        importance: 'medium'
+        category: 'PREFERENCE'
       });
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain('not supported');
-      }
+      expect(result.success).toBe(true);
+      expect(mockFetch.mock.calls[0][0]).toContain('/api/v1/agent/memories');
     });
 
     it('should return error if content missing', async () => {
@@ -42,63 +66,154 @@ describe('myn_memory', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should return error even for minimal remember', async () => {
-      // Backend has no POST endpoint — always returns not-supported error.
+    it('should create a memory without an optional category', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          id: 'memory-1',
+          type: 'PREFERENCE',
+          content: 'Simple memory',
+          confidence: 1,
+          duplicate: false,
+          message: 'Created'
+        })
+      });
+
       const result = await executeMemory(client, {
         action: 'remember',
         content: 'Simple memory'
       });
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
   });
 
   describe('recall action', () => {
     it('should get recent memories', async () => {
-      // Backend returns an array of memory objects (not a wrapper object)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve([
-          { memoryId: '1', content: 'Memory 1', category: 'work_context', tags: [], importance: 'high', createdAt: '2026-03-01T10:00:00Z' }
-        ])
+        json: () => Promise.resolve({
+          memories: [memoryDto('1', 'Memory 1')],
+          totalCount: 1,
+          limit: 50,
+          offset: 0,
+          hasMore: false
+        })
       });
 
       const result = await executeMemory(client, { action: 'recall' });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(Array.isArray(result.data)).toBe(true);
+        expect(result.data).toEqual([memoryDto('1', 'Memory 1')]);
       }
+      expect(mockFetch.mock.calls[0][0]).toContain('limit=50');
     });
 
-    it('should get specific memory by id (client-side filter)', async () => {
-      // Backend returns all memories as array; client filters by memoryId
+    it('should use the requested recall limit', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve([
-          {
-            memoryId: '550e8400-e29b-41d4-a716-446655440000',
-            content: 'Specific memory',
-            category: 'user_preference',
-            tags: ['pref'],
-            importance: 'medium',
-            createdAt: '2026-03-01T10:00:00Z',
-            accessedAt: '2026-03-01T12:00:00Z'
-          }
-        ])
+        json: () => Promise.resolve({
+          memories: [],
+          totalCount: 0,
+          limit: 7,
+          offset: 0,
+          hasMore: false
+        })
+      });
+
+      await executeMemory(client, { action: 'recall', limit: 7 });
+
+      expect(mockFetch.mock.calls[0][0]).toContain('limit=7');
+    });
+
+    it('should get a specific memory by customer-owned id', async () => {
+      const targetId = '550e8400-e29b-41d4-a716-446655440000';
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(memoryDto(targetId, 'Specific memory'))
       });
 
       const result = await executeMemory(client, {
         action: 'recall',
-        memoryId: '550e8400-e29b-41d4-a716-446655440000'
+        memoryId: targetId
       });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveProperty('memoryId', '550e8400-e29b-41d4-a716-446655440000');
+        expect(result.data).toHaveProperty('id', targetId);
       }
+      expect(mockFetch.mock.calls).toHaveLength(1);
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        `/api/v1/customers/memories/${targetId}`
+      );
+      expect(mockFetch.mock.calls[0][0]).not.toContain('?');
+    });
+
+    it('should ignore the list limit for direct id lookup', async () => {
+      const targetId = '550e8400-e29b-41d4-a716-446655440000';
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(memoryDto(targetId, 'Specific memory'))
+      });
+
+      const result = await executeMemory(client, {
+        action: 'recall',
+        memoryId: targetId,
+        limit: 1
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockFetch.mock.calls).toHaveLength(1);
+      expect(mockFetch.mock.calls[0][0]).not.toContain('limit=');
+    });
+
+    it('should reject a mismatched direct lookup response', async () => {
+      const targetId = '550e8400-e29b-41d4-a716-446655440000';
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(
+          memoryDto('660e8400-e29b-41d4-a716-446655440000', 'Wrong memory')
+        )
+      });
+
+      const result = await executeMemory(client, {
+        action: 'recall',
+        memoryId: targetId
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('unexpected id');
+      }
+      expect(mockFetch.mock.calls).toHaveLength(1);
+    });
+
+    it('should return a stable not-found error without scanning pages', async () => {
+      const targetId = '550e8400-e29b-41d4-a716-446655440000';
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: () => Promise.resolve('{"message":"Memory not found"}')
+      });
+
+      const result = await executeMemory(client, {
+        action: 'recall',
+        memoryId: targetId
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe(`Memory not found: ${targetId}`);
+      }
+      expect(mockFetch.mock.calls).toHaveLength(1);
     });
   });
 
