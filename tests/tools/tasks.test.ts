@@ -352,6 +352,31 @@ describe('myn_tasks', () => {
       expect(requestBody).toHaveProperty('title', 'Safe Title');
       expect(requestBody).not.toHaveProperty('ownerId');
     });
+
+    it('passes reminder fields to guardedPatch verbatim', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '550e8400-e29b-41d4-a716-446655440000', stateHash: 'abc123' })
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ updated: true })
+      });
+
+      const result = await executeTasks(client, {
+        action: 'update',
+        taskId: '550e8400-e29b-41d4-a716-446655440000',
+        updates: { reminderEnabled: true, reminderTime: '09:00' }
+      });
+
+      expect(result.success).toBe(true);
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+        reminderEnabled: true,
+        reminderTime: '09:00'
+      });
+    });
   });
 
   describe('search action', () => {
