@@ -4,7 +4,7 @@
 
 import { Type } from '@sinclair/typebox';
 import type { MynApiClient } from '../client.js';
-import { jsonResult, errorResult } from '../client.js';
+import { jsonResult, errorResult, guardedPatch } from '../client.js';
 
 export const HabitsInputSchema = Type.Object({
   action: Type.Union([
@@ -25,8 +25,13 @@ export const HabitsInputSchema = Type.Object({
   // schedule parameters
   dateRange: Type.Optional(Type.Number({ default: 7, description: 'Number of days to look ahead' })),
   // reminders parameters
-  enableReminders: Type.Optional(Type.Boolean()),
-  reminderTime: Type.Optional(Type.String({ pattern: '^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$' }))
+  enableReminders: Type.Optional(Type.Boolean({
+    description: "Set reminderEnabled on the habit's unified task entity."
+  })),
+  reminderTime: Type.Optional(Type.String({
+    pattern: '^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$',
+    description: "Set reminderTime on the habit's unified task entity."
+  }))
 });
 
 export type HabitsInput = typeof HabitsInputSchema.static;
@@ -150,51 +155,115 @@ async function getSchedule(client: MynApiClient, input: HabitsInput) {
   return jsonResult(data);
 }
 
+interface HabitReminderTask {
+  id: string;
+  title?: string;
+  taskType?: string;
+  reminderEnabled?: boolean;
+  reminderTime?: string;
+}
+
+function validateHabitTask(task: unknown): void {
+  if (
+    typeof task !== 'object' ||
+    task === null ||
+    (task as { taskType?: unknown }).taskType !== 'HABIT'
+  ) {
+    throw new Error('habitId must reference a HABIT');
+  }
+}
+
+async function getReminderPage(client: MynApiClient, page: number, pageSize: number) {
+  const data = await client.get<HabitReminderTask[] | { tasks: HabitReminderTask[] }>(
+    `/api/v2/unified-tasks?type=HABIT&page=${page}&size=${pageSize}`
+  );
+  const tasks = Array.isArray(data) ? data : data.tasks;
+  if (!Array.isArray(tasks)) {
+    throw new Error('Unified-task pagination returned an unexpected response shape');
+  }
+  if (tasks.some(task => typeof task.id !== 'string' || task.id.length === 0)) {
+    throw new Error('Unified-task pagination returned a task without an ID');
+  }
+  return tasks;
+}
+
+async function listHabitReminders(client: MynApiClient) {
+  const pageSize = 200;
+  const maxPages = 100;
+  const maxRecords = pageSize * maxPages;
+  const tasksById = new Map<string, HabitReminderTask>();
+  const seenPageSignatures = new Set<string>();
+  let firstPageSignature: string | undefined;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const pageTasks = await getReminderPage(client, page, pageSize);
+    const signature = JSON.stringify(pageTasks.map(task => task.id));
+    if (page === 0) firstPageSignature = signature;
+    if (seenPageSignatures.has(signature)) {
+      throw new Error('Unified-task pagination did not advance');
+    }
+    seenPageSignatures.add(signature);
+
+    const newIds = pageTasks.filter(task => !tasksById.has(task.id));
+    if (pageTasks.length === pageSize && newIds.length === 0) {
+      throw new Error('Unified-task pagination did not advance');
+    }
+    if (tasksById.size + newIds.length > maxRecords) {
+      throw new Error(`Unified-task pagination exceeded the ${maxRecords}-record safety limit`);
+    }
+    for (const task of pageTasks) tasksById.set(task.id, task);
+
+    if (pageTasks.length < pageSize) {
+      if (page > 0) {
+        const checkPage = await getReminderPage(client, 0, pageSize);
+        const checkSignature = JSON.stringify(checkPage.map(task => task.id));
+        if (checkSignature !== firstPageSignature) {
+          throw new Error('Unified-task collection changed during pagination');
+        }
+      }
+      return Array.from(tasksById.values())
+        .filter(task => task.taskType === 'HABIT' && task.reminderEnabled)
+        .map(task => ({
+          habitId: task.id,
+          title: task.title,
+          reminderTime: task.reminderTime
+        }));
+    }
+  }
+
+  throw new Error(`Unified-task pagination exceeded the ${maxPages}-page safety limit`);
+}
+
 async function manageReminders(client: MynApiClient, input: HabitsInput) {
   if (input.habitId) {
-    // Manage reminders for specific habit
-    if (input.enableReminders === undefined && !input.reminderTime) {
-      // Get current reminder settings
-      const data = await client.get<{
-        habitId: string;
-        remindersEnabled: boolean;
-        reminderTime?: string;
-        reminderDays: number[];
-      }>(`/api/habits/reminders/${input.habitId}`);
+    const path = `/api/v2/unified-tasks/${input.habitId}`;
+    if (input.enableReminders !== undefined || input.reminderTime !== undefined) {
+      const updates: Record<string, unknown> = {};
+      if (input.enableReminders !== undefined) updates.reminderEnabled = input.enableReminders;
+      if (input.reminderTime !== undefined) updates.reminderTime = input.reminderTime;
+
+      const data = await guardedPatch<unknown>(client, path, updates, path, validateHabitTask);
       return jsonResult(data);
     }
 
-    // Update reminder settings
-    const body: Record<string, unknown> = {};
-    if (input.enableReminders !== undefined) body.enabled = input.enableReminders;
-    if (input.reminderTime) body.time = input.reminderTime;
-
-    const data = await client.put<{
-      habitId: string;
-      remindersEnabled: boolean;
-      reminderTime?: string;
-    }>(`/api/habits/reminders/${input.habitId}`, body);
-    return jsonResult(data);
+    const task = await client.get<HabitReminderTask>(path);
+    validateHabitTask(task);
+    return jsonResult({
+      habitId: input.habitId,
+      reminderEnabled: Boolean(task.reminderEnabled),
+      reminderTime: task.reminderTime
+    });
   }
 
-  // List all habit reminders
-  const data = await client.get<{
-    reminders: Array<{
-      habitId: string;
-      title: string;
-      enabled: boolean;
-      reminderTime?: string;
-      reminderDays: number[];
-    }>;
-  }>('/api/habits/reminders');
-  return jsonResult(data);
+  return jsonResult({ reminders: await listHabitReminders(client) });
 }
 
 export function registerHabitsTool(api: OpenClawPluginApi, client: MynApiClient): void {
   api.registerTool({
     id: 'myn_habits',
     name: 'MYN Habits',
-    description: 'Track habits, streaks, and reminders. Actions: streaks, skip, chains, schedule, reminders.',
+    description: 'Track habits, streaks, and reminders. Actions: streaks, skip, chains, schedule, reminders. ' +
+      "Reminder settings live on the habit's unified task entity.",
     inputSchema: HabitsInputSchema,
     async execute(input: unknown) {
       return executeHabits(client, input as HabitsInput);
