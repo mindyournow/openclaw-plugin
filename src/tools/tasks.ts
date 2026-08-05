@@ -197,7 +197,8 @@ const ALLOWED_UPDATE_FIELDS = new Set([
   'title', 'description', 'priority', 'status', 'startDate', 'endDate',
   'duration', 'projectId', 'recurrenceRule', 'isAutoScheduled', 'autoScheduleEnabled',
   'calendarId', 'location', 'notes', 'tags', 'estimatedMinutes', 'actualMinutes',
-  'completedAt', 'archivedAt', 'taskType', 'assignedTo', 'scheduledAt', 'dueDate'
+  'completedAt', 'archivedAt', 'taskType', 'assignedTo', 'scheduledAt', 'dueDate',
+  'reminderEnabled', 'reminderTime'
 ]);
 
 async function updateTask(client: MynApiClient, input: TasksInput) {
