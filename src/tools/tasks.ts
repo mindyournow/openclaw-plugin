@@ -48,14 +48,14 @@ export const TasksInputSchema = Type.Object({
   limit: Type.Optional(Type.Number({ default: 20 })),
   offset: Type.Optional(Type.Number({ default: 0 })),
   // Get/Update/Complete/Archive parameters
-  taskId: Type.Optional(Type.String({ format: 'uuid' })),
+  taskId: Type.Optional(Type.String()),
   // Create/Update parameters
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   description: Type.Optional(Type.String({ maxLength: 2000 })),
   taskType: Type.Optional(TaskTypeSchema),
   duration: Type.Optional(Type.String()), // "30m", "1h", "1h30m"
   // Create specific
-  id: Type.Optional(Type.String({ format: 'uuid' })), // Auto-generated if omitted — do NOT hallucinate UUIDs
+  id: Type.Optional(Type.String()), // Auto-generated if omitted — do NOT hallucinate UUIDs
   recurrenceRule: Type.Optional(Type.String()), // For HABIT/CHORE types
   isAutoScheduled: Type.Optional(Type.Boolean({ description: 'Enable auto-scheduling by the planning system. Defaults to true — only set false if user explicitly opts out.' })),
   autoScheduleEnabled: Type.Optional(Type.Boolean({ description: 'DEPRECATED alias for isAutoScheduled. Prefer isAutoScheduled.' })),

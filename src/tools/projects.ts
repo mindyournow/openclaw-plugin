@@ -14,16 +14,16 @@ export const ProjectsInputSchema = Type.Object({
     Type.Literal('move_task')
   ]),
   // get parameters
-  projectId: Type.Optional(Type.String({ format: 'uuid' })),
+  projectId: Type.Optional(Type.String()),
   // create parameters
   name: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
   description: Type.Optional(Type.String({ maxLength: 500 })),
   color: Type.Optional(Type.String({ pattern: '^#[0-9A-Fa-f]{6}$' })),
   icon: Type.Optional(Type.String()),
-  parentProjectId: Type.Optional(Type.String({ format: 'uuid' })),
+  parentProjectId: Type.Optional(Type.String()),
   // move_task parameters
-  taskId: Type.Optional(Type.String({ format: 'uuid' })),
-  targetProjectId: Type.Optional(Type.String({ format: 'uuid' })),
+  taskId: Type.Optional(Type.String()),
+  targetProjectId: Type.Optional(Type.String()),
   // list parameters
   includeArchived: Type.Optional(Type.Boolean({ default: false })),
   includeStats: Type.Optional(Type.Boolean({ default: true }))

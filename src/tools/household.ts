@@ -15,7 +15,7 @@ export const HouseholdInputSchema = Type.Object({
     Type.Literal('chore_complete')
   ]),
   // Common parameters
-  householdId: Type.Optional(Type.String({ format: 'uuid' })),
+  householdId: Type.Optional(Type.String()),
   // invite parameters
   email: Type.Optional(Type.String({ format: 'email' })),
   role: Type.Optional(Type.Union([
@@ -24,8 +24,8 @@ export const HouseholdInputSchema = Type.Object({
   ])),
   message: Type.Optional(Type.String()),
   // chore_complete parameters
-  choreId: Type.Optional(Type.String({ format: 'uuid' })),
-  completedBy: Type.Optional(Type.String({ format: 'uuid' })),
+  choreId: Type.Optional(Type.String()),
+  completedBy: Type.Optional(Type.String()),
   note: Type.Optional(Type.String()),
   // chore_schedule parameters
   date: Type.Optional(Type.String({ format: 'date' })),

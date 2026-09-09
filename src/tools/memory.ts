@@ -30,7 +30,7 @@ export const MemoryInputSchema = Type.Object({
     Type.Literal('RELATIONSHIP')
   ])),
   // recall/forget parameters
-  memoryId: Type.Optional(Type.String({ format: 'uuid' })),
+  memoryId: Type.Optional(Type.String()),
   // search parameters
   query: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Number({ default: 10 }))

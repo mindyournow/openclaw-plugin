@@ -52,7 +52,10 @@ export const YnabInputSchema = Type.Object({
     Type.Literal('rename_category'),
     Type.Literal('move_category'),
     Type.Literal('rename_category_group'),
-    Type.Literal('connection_status')
+    Type.Literal('connection_status'),
+    // Budget selection
+    Type.Literal('list_budgets'),
+    Type.Literal('switch_budget')
   ]),
 
   // Shared parameters
@@ -88,6 +91,7 @@ export const YnabInputSchema = Type.Object({
   targetGroupName: Type.Optional(Type.String({ description: 'Destination category group name for move_category (fuzzy match).' })),
   note: Type.Optional(Type.String({ description: 'Optional note for create_category.' })),
   categoryGroupId: Type.Optional(Type.String({ description: 'Category group ID (alternative to groupName). Use list_categories to find IDs.' })),
+  budgetId: Type.Optional(Type.String({ description: 'Budget ID for switch_budget. Use list_budgets to find available budget IDs.' })),
 
   // Split transaction parameters
   splits: Type.Optional(Type.Array(
@@ -258,6 +262,12 @@ export async function executeYnab(
       // Connection
       case 'connection_status':
         return jsonResult(await client.get('/api/v1/ynab/status'));
+
+      // Budget selection
+      case 'list_budgets':
+        return jsonResult(await client.get('/api/v1/ynab/budgets'));
+      case 'switch_budget':
+        return await switchBudget(client, input);
 
       default:
         return errorResult(`Unknown action: ${(input as { action: string }).action}`);
@@ -778,6 +788,14 @@ async function deleteScheduledTransaction(client: MynApiClient, input: YnabInput
   return jsonResult(data);
 }
 
+async function switchBudget(client: MynApiClient, input: YnabInput) {
+  if (!input.budgetId) {
+    return errorResult('budgetId is required for switch_budget. Use list_budgets to find available budget IDs.');
+  }
+  const data = await client.post<unknown>(`/api/v1/ynab/default-budget?budgetId=${encodeURIComponent(input.budgetId)}`, {});
+  return jsonResult(data);
+}
+
 // ==================== OpenClaw plugin registration ====================
 
 interface OpenClawPluginApi {
@@ -801,7 +819,8 @@ export function registerYnabTool(api: OpenClawPluginApi, client: MynApiClient): 
       'Split: split_transaction takes a transactionId and splits array (each with categoryName and amount in dollars). Use this to split an Amazon order or any transaction across multiple budget categories.',
       'Scheduled: scheduled_transactions, create_scheduled_transaction, update_scheduled_transaction, delete_scheduled_transaction, subscriptions, upcoming_bills.',
       'Analytics: spending_insights, payee_analysis, spending_trends, net_worth, debt_tracking.',
-      'Connection: connection_status.',
+      'Connection: connection_status, list_budgets, switch_budget.',
+      'BUDGET SWITCHING: After a YNAB Fresh Start, the old budget is archived and a new one is created with a different ID. Use list_budgets to see all available budgets (with their IDs and which is currently default), then switch_budget to point the integration at the new budget.',
       'Category Management: create_category_group, create_category, rename_category, move_category (to different group), rename_category_group.',
       'Amounts in dollars (negative=expense). Categories resolved by name (fuzzy match).',
       'CATEGORIZATION: categoryName is REQUIRED for all transactions (enforced by code). ALWAYS call list_categories first to find the most relevant category. Do NOT guess common names like "Groceries" — look at what categories actually exist. If no existing category fits well, suggest creating a new one with create_category. Consider the payee and items to pick the right category (e.g., Dollar General selling cigarettes should use "Cigarettes" not "Groceries"). For mixed purchases, consider split_transaction.',

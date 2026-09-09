@@ -18,7 +18,7 @@ export const ListsInputSchema = Type.Object({
     Type.Literal('convert_to_tasks')
   ]),
   // Common parameters
-  householdId: Type.Optional(Type.String({ format: 'uuid' })),
+  householdId: Type.Optional(Type.String()),
   // add/bulk_add parameters
   item: Type.Optional(Type.String({ minLength: 1 })),
   items: Type.Optional(Type.Array(Type.String())),
@@ -26,7 +26,7 @@ export const ListsInputSchema = Type.Object({
   quantity: Type.Optional(Type.String()), // e.g., "2", "1 lb", "3 bunches"
   notes: Type.Optional(Type.String()),
   // toggle parameters
-  itemId: Type.Optional(Type.String({ format: 'uuid' })),
+  itemId: Type.Optional(Type.String()),
   checked: Type.Optional(Type.Boolean()),
   // convert_to_tasks parameters
   uncheckedOnly: Type.Optional(Type.Boolean({ default: true })),

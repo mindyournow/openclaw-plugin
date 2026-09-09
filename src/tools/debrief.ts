@@ -25,9 +25,9 @@ export const DebriefInputSchema = Type.Object({
   context: Type.Optional(Type.String({ description: 'Additional context for briefing generation' })),
   focusAreas: Type.Optional(Type.Array(Type.String())),
   // get parameters
-  debriefId: Type.Optional(Type.String({ format: 'uuid' })),
+  debriefId: Type.Optional(Type.String()),
   // apply_correction parameters
-  correctionId: Type.Optional(Type.String({ format: 'uuid' })),
+  correctionId: Type.Optional(Type.String()),
   correctionType: Type.Optional(Type.Union([
     Type.Literal('TASK_COMPLETED'),
     Type.Literal('TASK_MISSED'),

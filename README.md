@@ -250,6 +250,9 @@ action: create_category_group | create_category | rename_category | move_categor
 
 # Connection
 action: connection_status
+
+# Budget selection (after YNAB Fresh Start)
+action: list_budgets | switch_budget
 ```
 
 **Examples:**

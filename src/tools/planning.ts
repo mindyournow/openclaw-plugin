@@ -36,7 +36,7 @@ export const PlanningInputSchema = Type.Object({
   respectExisting: Type.Optional(Type.Boolean({ default: true })),
   bufferMinutes: Type.Optional(Type.Number({ default: 15 })),
   // reschedule parameters
-  taskIds: Type.Optional(Type.Array(Type.String({ format: 'uuid' }))),
+  taskIds: Type.Optional(Type.Array(Type.String())),
   reason: Type.Optional(Type.String()),
   targetDate: Type.Optional(Type.String({ format: 'date' })),
   spreadOverDays: Type.Optional(Type.Number({ default: 1 }))

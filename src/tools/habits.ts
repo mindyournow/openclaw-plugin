@@ -15,13 +15,13 @@ export const HabitsInputSchema = Type.Object({
     Type.Literal('reminders')
   ]),
   // streaks parameters
-  habitId: Type.Optional(Type.String({ format: 'uuid' })),
+  habitId: Type.Optional(Type.String()),
   includeHistory: Type.Optional(Type.Boolean({ default: false })),
   // skip parameters
   skipDate: Type.Optional(Type.String({ format: 'date' })),
   skipReason: Type.Optional(Type.String()),
   // chains parameters
-  chainId: Type.Optional(Type.String({ format: 'uuid' })),
+  chainId: Type.Optional(Type.String()),
   // schedule parameters
   dateRange: Type.Optional(Type.Number({ default: 7, description: 'Number of days to look ahead' })),
   // reminders parameters

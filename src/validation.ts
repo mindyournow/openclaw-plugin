@@ -3,8 +3,9 @@
  * Provides UUID format validation, email validation, and other input helpers.
  */
 
-/** RFC 4122 UUID v4 pattern */
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** UUID-like pattern — accepts any hyphenated hex string, not just strict v4.
+ *  MYN has legacy task IDs with non-standard lengths and version nibbles. */
+const UUID_REGEX = /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$/i;
 
 /** Basic email format check */
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
