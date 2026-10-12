@@ -37,7 +37,12 @@ export const TasksInputSchema = Type.Object({
     Type.Literal('update'),
     Type.Literal('complete'),
     Type.Literal('archive'),
-    Type.Literal('search')
+    Type.Literal('search'),
+    // MIN-1085: plans — one task whose steps are done in order
+    Type.Literal('create_plan'),
+    Type.Literal('plan'),
+    Type.Literal('add_steps'),
+    Type.Literal('reorder_steps')
   ]),
   // List parameters
   status: Type.Optional(TaskStatusSchema),
@@ -62,6 +67,15 @@ export const TasksInputSchema = Type.Object({
   calendarId: Type.Optional(Type.String({ description: 'Calendar ID to link this task to (e.g. "primary" for default Google Calendar)' })),
   calendarName: Type.Optional(Type.String({ description: 'Calendar name to resolve (e.g. "Family", "Work"). Used instead of calendarId.' })),
   scheduleNames: Type.Optional(Type.Array(Type.String(), { description: 'Schedule names to assign (e.g. ["Morning"], ["Weekday Evening", "Weekend Morning"]). Resolved to IDs automatically.' })),
+  // Plan parameters (MIN-1085)
+  parentTaskId: Type.Optional(Type.String({ format: 'uuid', description: 'For create: make the new task a step of this plan (a task id).' })),
+  position: Type.Optional(Type.Integer({ description: "For create: the step's place in its plan (0 is first)." })),
+  steps: Type.Optional(Type.Array(Type.Object({
+    title: Type.String({ minLength: 1, maxLength: 200 }),
+    startDate: Type.Optional(Type.String({ format: 'date' })),
+    priority: Type.Optional(PrioritySchema)
+  }), { minItems: 1, maxItems: 50, description: "For create_plan/add_steps: new steps in the order they happen; startDate and priority default to the plan's." })),
+  stepIds: Type.Optional(Type.Array(Type.String({ format: 'uuid' }), { description: 'For create_plan/add_steps: existing task ids to move into the plan, in order. For reorder_steps: step ids in the new order (steps left out keep their order after these).' })),
   // Update specific
   updates: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   // Search parameters
@@ -91,6 +105,14 @@ export async function executeTasks(
         return await archiveTask(client, input);
       case 'search':
         return await searchTasks(client, input);
+      case 'create_plan':
+        return await createPlan(client, input);
+      case 'plan':
+        return await getPlan(client, input);
+      case 'add_steps':
+        return await addSteps(client, input);
+      case 'reorder_steps':
+        return await reorderSteps(client, input);
       default:
         return errorResult(`Unknown action: ${(input as { action: string }).action}`);
     }
@@ -162,6 +184,8 @@ async function createTask(client: MynApiClient, input: TasksInput) {
   if (input.duration) body.duration = input.duration;
   if (input.projectId) body.projectId = input.projectId;
   if (input.recurrenceRule) body.recurrenceRule = input.recurrenceRule;
+  if (input.parentTaskId) body.parentTaskId = input.parentTaskId;
+  if (Number.isInteger(input.position)) body.position = input.position;
   // Accept both field names — some models hallucinate "autoScheduleEnabled" instead of "isAutoScheduled"
   const autoSched = input.isAutoScheduled ?? (input as Record<string, unknown>).autoScheduleEnabled;
   // Default to auto-scheduled unless explicitly set to false
@@ -198,7 +222,9 @@ const ALLOWED_UPDATE_FIELDS = new Set([
   'duration', 'projectId', 'recurrenceRule', 'isAutoScheduled', 'autoScheduleEnabled',
   'calendarId', 'location', 'notes', 'tags', 'estimatedMinutes', 'actualMinutes',
   'completedAt', 'archivedAt', 'taskType', 'assignedTo', 'scheduledAt', 'dueDate',
-  'reminderEnabled', 'reminderTime'
+  'reminderEnabled', 'reminderTime',
+  // MIN-1085: parentTaskId moves a task into a plan ("" takes it out); position orders its steps
+  'parentTaskId', 'position'
 ]);
 
 async function updateTask(client: MynApiClient, input: TasksInput) {
@@ -286,6 +312,104 @@ async function searchTasks(client: MynApiClient, input: TasksInput) {
   return jsonResult(data);
 }
 
+// ==================== MIN-1085: plans ====================
+
+interface PlanView {
+  planId: string;
+  steps?: Array<{ id: string }>;
+  currentStep?: unknown;
+}
+
+const planPath = (id: string) => `/api/v2/unified-tasks/${id}/plan`;
+
+/** Append new steps, then existing tasks moved in (state-hash guarded), after the plan's last step. */
+async function attachSteps(client: MynApiClient, planId: string, input: TasksInput): Promise<string | null> {
+  const steps = input.steps ?? [];
+  const moved = input.stepIds ?? [];
+  if (steps.length === 0 && moved.length === 0) return 'steps or stepIds is required';
+  for (const step of steps) {
+    if (!step?.title) return 'every step needs a title';
+  }
+  for (const id of moved) {
+    const err = validateUuid(id, 'stepIds entry');
+    if (err) return err;
+  }
+  const plan = await client.get<{ priority?: string; startDate?: string }>(`/api/v2/unified-tasks/${planId}`);
+  const existing = await client.get<PlanView>(planPath(planId));
+  let position = existing?.steps?.length ?? 0;
+  for (const step of steps) {
+    await client.post<unknown>('/api/v2/unified-tasks', {
+      id: crypto.randomUUID(),
+      title: step.title,
+      taskType: 'TASK',
+      priority: step.priority ?? plan?.priority ?? 'OPPORTUNITY_NOW',
+      startDate: step.startDate ?? plan?.startDate ?? new Date().toISOString().slice(0, 10),
+      isAutoScheduled: false,
+      parentTaskId: planId,
+      position: position++
+    });
+  }
+  for (const id of moved) {
+    await guardedPatch<unknown>(client, `/api/v2/unified-tasks/${id}`, { parentTaskId: planId, position: position++ }, `/api/v2/unified-tasks/${id}`);
+  }
+  return null;
+}
+
+async function createPlan(client: MynApiClient, input: TasksInput) {
+  if (!input.title) return errorResult('title is required for create_plan action');
+  if (!input.steps?.length && !input.stepIds?.length) return errorResult('create_plan needs steps or stepIds');
+  const first = input.steps?.[0];
+  const planId = input.id || crypto.randomUUID();
+  const body: Record<string, unknown> = {
+    id: planId,
+    title: input.title,
+    taskType: 'TASK',
+    priority: input.priority ?? first?.priority ?? 'OPPORTUNITY_NOW',
+    startDate: input.startDate ?? first?.startDate ?? new Date().toISOString().slice(0, 10),
+    isAutoScheduled: false
+  };
+  if (input.description) body.description = input.description;
+  await client.post<unknown>('/api/v2/unified-tasks', body);
+  const err = await attachSteps(client, planId, input);
+  if (err) return errorResult(err);
+  return jsonResult(await client.get<PlanView>(planPath(planId)));
+}
+
+async function getPlan(client: MynApiClient, input: TasksInput) {
+  if (!input.taskId) return errorResult('taskId is required for plan action');
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
+  return jsonResult(await client.get<PlanView>(planPath(input.taskId)));
+}
+
+async function addSteps(client: MynApiClient, input: TasksInput) {
+  if (!input.taskId) return errorResult('taskId is required for add_steps action');
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
+  const err = await attachSteps(client, input.taskId, input);
+  if (err) return errorResult(err);
+  return jsonResult(await client.get<PlanView>(planPath(input.taskId)));
+}
+
+async function reorderSteps(client: MynApiClient, input: TasksInput) {
+  if (!input.taskId) return errorResult('taskId is required for reorder_steps action');
+  const uuidErr = validateUuid(input.taskId, 'taskId');
+  if (uuidErr) return errorResult(uuidErr);
+  if (!input.stepIds?.length) return errorResult('stepIds is required for reorder_steps action');
+  const plan = await client.get<PlanView>(planPath(input.taskId));
+  const current = (plan?.steps ?? []).map(step => step.id);
+  const unknown = input.stepIds.filter(id => !current.includes(id));
+  if (unknown.length > 0) return errorResult(`Not steps of this plan: ${unknown.join(', ')}`);
+  const named = [...new Set(input.stepIds)];
+  const order = [...named, ...current.filter(id => !named.includes(id))];
+  for (const [position, id] of order.entries()) {
+    if (current.indexOf(id) !== position) {
+      await guardedPatch<unknown>(client, `/api/v2/unified-tasks/${id}`, { position }, `/api/v2/unified-tasks/${id}`);
+    }
+  }
+  return jsonResult(await client.get<PlanView>(planPath(input.taskId)));
+}
+
 /**
  * Resolve schedule names to IDs by looking up the user's available schedules.
  */
@@ -312,7 +436,13 @@ export function registerTasksTool(api: OpenClawPluginApi, client: MynApiClient):
   api.registerTool({
     id: 'myn_tasks',
     name: 'MYN Tasks',
-    description: 'Manage tasks, habits, and chores. Actions: list, get, create, update, complete, archive, search. ' +
+    description: 'Manage tasks, habits, and chores. Actions: list, get, create, update, complete, archive, search, ' +
+      'create_plan, plan, add_steps, reorder_steps. ' +
+      'PLANS: a multi-step effort (a move, a trip, a launch) is ONE plan task whose steps are done in order, not a pile of tasks. ' +
+      'create_plan takes a title and steps in order (and/or stepIds of existing tasks to group). The plan shows as one item in the zone ' +
+      'and on the date of its current step (the first step not done). plan (taskId = the plan or any step) answers "what\'s next": currentStep. ' +
+      'add_steps appends steps; reorder_steps takes stepIds in the new order. update with parentTaskId and position also moves a single ' +
+      'task into a plan; parentTaskId "" takes it out. ' +
       'SCHEDULING: Tasks default to isAutoScheduled=true. Always assign scheduleNames based on when the task should happen ' +
       '(e.g. ["Morning"], ["Weekend Morning"], ["Weekday Evening"]). Use calendarName to link to a specific calendar (e.g. "Family"). ' +
       'CALENDAR EVENTS: When creating a task for a specific date/time event, also create a matching calendar event via myn_calendar.',

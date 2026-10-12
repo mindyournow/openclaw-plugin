@@ -54,7 +54,7 @@ plugins:
 Manage tasks, habits, and chores.
 
 ```yaml
-action: list | get | create | update | complete | archive | search
+action: list | get | create | update | complete | archive | search | create_plan | plan | add_steps | reorder_steps
 ```
 
 **Examples:**
@@ -63,6 +63,29 @@ action: list | get | create | update | complete | archive | search
 action: list
 priority: CRITICAL
 status: PENDING
+
+# Create a plan: one task whose steps are done in order (MIN-1085).
+# MYN shows it as one item, in the zone and on the date of its current step.
+action: create_plan
+title: "Move to Bothell"
+steps:
+  - { title: "Book the movers", startDate: "2026-10-13" }
+  - { title: "Pack the kitchen" }
+# stepIds: [<existing task ids>]  groups tasks the user already has
+
+# What's next on a plan (taskId = the plan or any step) → currentStep
+action: plan
+taskId: "<plan id>"
+
+# Add steps / reorder them (writes are state-hash guarded)
+action: add_steps      # or reorder_steps with stepIds in the new order
+taskId: "<plan id>"
+steps: [{ title: "Return the rental truck" }]
+
+# Move one task into a plan (parentTaskId "" takes it out)
+action: update
+taskId: "<task id>"
+updates: { parentTaskId: "<plan id>", position: 3 }
 
 # Create a task (UUID auto-generated if omitted)
 action: create

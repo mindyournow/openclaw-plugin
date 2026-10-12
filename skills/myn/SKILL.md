@@ -8,7 +8,7 @@ Use these OpenClaw tool names instead of raw REST calls:
 
 | OpenClaw Tool | Actions | REST Equivalent | Reference |
 |---------------|---------|-----------------|-----------|
-| `myn_tasks` | list, get, create, update, complete, archive, search | `/api/v2/unified-tasks` | [references/tasks-api.md](references/tasks-api.md) |
+| `myn_tasks` | list, get, create, update, complete, archive, search, create_plan, plan, add_steps, reorder_steps | `/api/v2/unified-tasks` | [references/tasks-api.md](references/tasks-api.md) |
 | `myn_debrief` | status, generate, get, apply_correction, complete_session | `/api/v2/debrief/*` | [references/debrief-api.md](references/debrief-api.md) |
 | `myn_calendar` | list_calendars, list_events, get_event, create_event, update_event, delete_event, move_event, meetings | `/api/v2/calendar/*` | [references/calendar-api.md](references/calendar-api.md) |
 | `myn_habits` | streaks, skip, chains, schedule, reminders | `/api/v2/unified-tasks/*, /api/habits/*` | [references/habits-api.md](references/habits-api.md) |
@@ -37,6 +37,10 @@ Use these OpenClaw tool names instead of raw REST calls:
 ### Task Creation (Required Fields)
 
 Every `myn_tasks create` call needs: `title`, `taskType`, `priority`, `startDate`. The `id` field is optional (auto-generated if omitted).
+
+### Plans (multi-step efforts)
+
+A move, a trip or a launch is one plan with ordered steps, not a pile of tasks: `myn_tasks` action=create_plan with `title` and `steps` in order (or `stepIds` to group existing tasks). The plan shows as one item, in the zone and on the date of its current step. "What's next on the move?" → action=plan, answer with `currentStep`. Use add_steps and reorder_steps to change it.
 
 ### Morning Routine
 

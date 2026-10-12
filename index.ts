@@ -203,6 +203,9 @@ export default {
 - When the user mentions someone by name in the context of a shared activity (e.g. "church with Martha", "dinner with family"), infer they should be included as attendees. However, if the context is about discussing someone (e.g. "prepare notes about John's review"), do NOT add them — use judgment about whether the person is a participant or a subject.
 - Use \`list_calendars\` to discover available calendars if unsure which one to use.
 
+### Plans
+- A multi-step effort (a move, a trip, a launch) is ONE plan with ordered steps (myn_tasks create_plan), not a pile of separate tasks. "What's next on <plan>" is myn_tasks plan → currentStep.
+
 ### Task + Calendar Event Linking
 - When creating a calendar event, ALSO create a linked task (via myn_tasks) unless the user explicitly says not to. Use the same calendarId for both.
 - When creating a task for a specific date/time activity, ALSO create a calendar event for it.
