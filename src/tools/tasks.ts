@@ -74,7 +74,7 @@ export const TasksInputSchema = Type.Object({
     title: Type.String({ minLength: 1, maxLength: 200 }),
     startDate: Type.Optional(Type.String({ format: 'date' })),
     priority: Type.Optional(PrioritySchema)
-  }), { minItems: 1, maxItems: 50, description: "For create_plan/add_steps: new steps in the order they happen; startDate and priority default to the plan's." })),
+  }), { minItems: 1, maxItems: 50, description: "For create_plan/add_steps: new steps, prerequisites first. Leave priority out and the server zones each step by its startDate (only today's steps are CRITICAL)." })),
   stepIds: Type.Optional(Type.Array(Type.String({ format: 'uuid' }), { description: 'For create_plan/add_steps: existing task ids to move into the plan, in order. For reorder_steps: step ids in the new order (steps left out keep their order after these).' })),
   // Update specific
   updates: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
@@ -439,8 +439,11 @@ export function registerTasksTool(api: OpenClawPluginApi, client: MynApiClient):
     description: 'Manage tasks, habits, and chores. Actions: list, get, create, update, complete, archive, search, ' +
       'create_plan, plan, add_steps, reorder_steps. ' +
       'PLANS: a multi-step effort (a move, a trip, a launch) is ONE plan task whose steps are done in order, not a pile of tasks. ' +
-      'create_plan takes a title and steps in order (and/or stepIds of existing tasks to group). The plan shows as one item in the zone ' +
-      'and on the date of its current step (the first step not done). plan (taskId = the plan or any step) answers "what\'s next": currentStep. ' +
+      'create_plan takes a title and steps in order (and/or stepIds of existing tasks to group). Put gates first: IDs and documents, ' +
+      'approvals, money and any go/no-go decision come before the steps that depend on them; if you don\'t know what is blocking, ask. ' +
+      'Name each step as the plain action the user would say ("Get Edward\'s enhanced ID"). The plan shows as one item in the zone ' +
+      'and on the date of its current step (the first step not done). plan (taskId = the plan or any step) answers "what\'s next": currentStep; ' +
+      'when you talk about a plan, name its current step, never a later one. ' +
       'add_steps appends steps; reorder_steps takes stepIds in the new order. update with parentTaskId and position also moves a single ' +
       'task into a plan; parentTaskId "" takes it out. ' +
       'SCHEDULING: Tasks default to isAutoScheduled=true. Always assign scheduleNames based on when the task should happen ' +

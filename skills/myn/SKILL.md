@@ -40,7 +40,7 @@ Every `myn_tasks create` call needs: `title`, `taskType`, `priority`, `startDate
 
 ### Plans (multi-step efforts)
 
-A move, a trip or a launch is one plan with ordered steps, not a pile of tasks: `myn_tasks` action=create_plan with `title` and `steps` in order (or `stepIds` to group existing tasks). The plan shows as one item, in the zone and on the date of its current step. "What's next on the move?" → action=plan, answer with `currentStep`. Use add_steps and reorder_steps to change it.
+A move, a trip or a launch is one plan with ordered steps, not a pile of tasks: `myn_tasks` action=create_plan with `title` and `steps` in order (or `stepIds` to group existing tasks). Put gates first: IDs and documents, approvals, money and any go/no-go decision come before the steps that depend on them, and if you don't know what's blocking, ask. Name each step as the plain action ("Get Edward's enhanced ID"), and leave `priority` out so each step is zoned by its date. The plan shows as one item, in the zone and on the date of its current step. "What's next on the move?" → action=plan, answer with `currentStep`. Use add_steps and reorder_steps to change it.
 
 ### Morning Routine
 
