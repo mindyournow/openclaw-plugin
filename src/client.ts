@@ -109,11 +109,39 @@ export class MynApiError extends Error {
   }
 }
 
+// MIN-930: Recursive redaction for secret-shaped keys
+const SECRET_KEY_PATTERN = /(access|refresh|id)_?token|secret|client_?secret|api_?key|password|credential/i;
+
+/**
+ * Recursively redact values whose keys match secret patterns. MIN-930 backstop.
+ */
+function redactSecrets(obj: unknown): unknown {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj === 'object' && Array.isArray(obj)) {
+    return obj.map((item) => redactSecrets(item));
+  }
+
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = SECRET_KEY_PATTERN.test(key) ? '[REDACTED]' : redactSecrets(value);
+    }
+    return result;
+  }
+
+  return obj;
+}
+
 /**
  * Helper to create a standardized tool result
  */
-export function jsonResult<T>(data: T): { success: true; data: T } {
-  return { success: true, data };
+export function jsonResult<T>(data: T): { success: true; data: unknown } {
+  // MIN-930: Redact secret-shaped keys from the result before returning to OpenClaw.
+  // This is a backstop against API regressions; server-side gates are the primary defense.
+  return { success: true, data: redactSecrets(data) };
 }
 
 /**
@@ -142,15 +170,17 @@ interface StaleStateErrorBody {
  * Flow:
  * 1. GET `getPath` (defaults to `path`) to obtain current `stateHash`
  * 2. PATCH `path` with `X-MYN-State-Hash` header
- * 3. On 409 (stale state): use the currentStateHash from the 409 body and retry once
+ * 3. On 409 (stale state): use currentStateHash, or re-read and revalidate when a
+ *    representation validator is supplied, then retry once
  */
 export async function guardedPatch<T>(
   client: MynApiClient,
   path: string,
   body: unknown,
-  getPath?: string
+  getPath?: string,
+  validateCurrent?: (current: unknown) => void
 ): Promise<T> {
-  return guardedWrite<T>(client, 'PATCH', path, body, getPath);
+  return guardedWrite<T>(client, 'PATCH', path, body, getPath, validateCurrent);
 }
 
 /**
@@ -193,12 +223,14 @@ async function guardedWrite<T>(
   method: 'PATCH' | 'PUT' | 'POST' | 'DELETE',
   path: string,
   body: unknown,
-  getPath?: string
+  getPath?: string,
+  validateCurrent?: (current: unknown) => void
 ): Promise<T> {
   const readPath = getPath ?? path;
 
   // Step 1: Read the current state to get the stateHash
   const current = await client.get<StateHashResponse>(readPath);
+  validateCurrent?.(current);
   let stateHash = current?.stateHash;
 
   // Step 2: Attempt the write with the state hash
@@ -206,20 +238,21 @@ async function guardedWrite<T>(
     return await writeWithHash<T>(client, method, path, body, stateHash);
   } catch (err) {
     if (err instanceof MynApiError && err.statusCode === 409) {
-      // Step 3: On conflict, extract current hash from 409 body and retry once
-      try {
+      // Validated writes must inspect the exact fresh representation whose hash authorizes the retry.
+      if (validateCurrent) {
+        const fresh = await client.get<StateHashResponse>(readPath);
+        validateCurrent(fresh);
+        stateHash = fresh?.stateHash;
+      } else {
         const errorBody: StaleStateErrorBody = err.responseBody ? JSON.parse(err.responseBody) : {};
         if (errorBody.currentStateHash) {
           stateHash = errorBody.currentStateHash;
         } else {
-          // Re-read to get fresh hash
           const fresh = await client.get<StateHashResponse>(readPath);
           stateHash = fresh?.stateHash;
         }
-        return await writeWithHash<T>(client, method, path, body, stateHash);
-      } catch (retryErr) {
-        throw retryErr;
       }
+      return await writeWithHash<T>(client, method, path, body, stateHash);
     }
     throw err;
   }

@@ -182,13 +182,25 @@ describe('myn_calendar', () => {
   describe('email validation in create_event', () => {
     it('skips invalid email attendees and only sends valid ones', async () => {
       mockFetch
-        // First call: resolve member emails (returns empty for non-email attendees)
+        // First call: resolve the non-email attendee against the current household
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ events: [], calendars: [] })
+          json: () => Promise.resolve({ id: 'household-1' })
         })
-        // Second call: create event
+        // Second call: no household member matches the invalid attendee name
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ members: [] })
+        })
+        // Third call: no shared calendar is available for the valid attendees
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ calendars: [] })
+        })
+        // Fourth call: create event
         .mockResolvedValueOnce({
           ok: true,
           status: 201,

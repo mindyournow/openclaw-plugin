@@ -54,7 +54,7 @@ plugins:
 Manage tasks, habits, and chores.
 
 ```yaml
-action: list | get | create | update | complete | archive | search
+action: list | get | create | update | complete | archive | search | create_plan | plan | add_steps | reorder_steps
 ```
 
 **Examples:**
@@ -63,6 +63,29 @@ action: list | get | create | update | complete | archive | search
 action: list
 priority: CRITICAL
 status: PENDING
+
+# Create a plan: one task whose steps are done in order (MIN-1085).
+# MYN shows it as one item, in the zone and on the date of its current step.
+action: create_plan
+title: "Move to Bothell"
+steps:
+  - { title: "Book the movers", startDate: "2026-10-13" }
+  - { title: "Pack the kitchen" }
+# stepIds: [<existing task ids>]  groups tasks the user already has
+
+# What's next on a plan (taskId = the plan or any step) → currentStep
+action: plan
+taskId: "<plan id>"
+
+# Add steps / reorder them (writes are state-hash guarded)
+action: add_steps      # or reorder_steps with stepIds in the new order
+taskId: "<plan id>"
+steps: [{ title: "Return the rental truck" }]
+
+# Move one task into a plan (parentTaskId "" takes it out)
+action: update
+taskId: "<task id>"
+updates: { parentTaskId: "<plan id>", position: 3 }
 
 # Create a task (UUID auto-generated if omitted)
 action: create
@@ -216,11 +239,13 @@ action: members | invite | chores | chore_schedule | chore_complete
 ```
 
 ### myn_projects
-Manage projects and categories.
+Browse MYN collections and file tasks into them.
 
 ```yaml
-action: list | get | create | move_task
+action: list | get | move_task
 ```
+
+**Collections, not projects:** MYN has twelve fixed collections that cannot be created or deleted. Use `move_task` to re-file a task; real user-named projects are planned separately.
 
 ### myn_planning
 AI-powered planning and scheduling.
@@ -250,9 +275,6 @@ action: create_category_group | create_category | rename_category | move_categor
 
 # Connection
 action: connection_status
-
-# Budget selection (after YNAB Fresh Start)
-action: list_budgets | switch_budget
 ```
 
 **Examples:**
@@ -334,6 +356,17 @@ When creating tasks, you MUST provide:
 
 **Duration Format**: Use simple format like "30m", "1h", "1h30m" (NOT ISO PT prefix)
 
+## Security Posture
+
+The plugin implements several security layers:
+
+- **S1 — TLS enforcement:** API URLs must use HTTPS; plain HTTP is accepted only for `localhost` and `127.0.0.1`.
+- **S2 — No mass assignment:** Tool updates pass through an explicit field allowlist.
+- **S3 — Safe query parameters:** All query strings use proper URL encoding.
+- **S4 — Data minimization:** Memory search and credential handling avoid unnecessary data exposure.
+- **S5 — Tool result redaction:** Each tool result is recursively scanned for secret-shaped keys (accessToken, refreshToken, apiKey, secret, password, credential, etc.) and matching values are replaced with `[REDACTED]` before returning to OpenClaw. This is a backstop against server-side regressions.
+- **S6 — Visible degradation:** API failures are logged and never silently ignored.
+
 ## Skill Companion
 
 This plugin includes a companion skill at `skills/myn/SKILL.md` that teaches agents MYN workflow patterns including:
@@ -378,7 +411,8 @@ const client = new MynApiClient(
 );
 
 // Make authenticated requests
-const tasks = await client.get('/api/v2/unified-tasks');
+const taskPage = await client.get('/api/v2/unified-tasks?limit=20');
+const tasks = taskPage.tasks;
 const newTask = await client.post('/api/v2/unified-tasks', { ... });
 ```
 
