@@ -1,7 +1,9 @@
-# @mind-your-now/openclaw-plugin
+# @mind-your-now/myn
 
-[![npm version](https://badge.fury.io/js/@mindyournow%2Fopenclaw-plugin.svg)](https://badge.fury.io/js/@mindyournow%2Fopenclaw-plugin)
+[![npm version](https://img.shields.io/npm/v/@mind-your-now/myn.svg)](https://www.npmjs.com/package/@mind-your-now/myn)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+This package was first published as `@mind-your-now/openclaw-plugin`, which is now deprecated.
 
 > OpenClaw plugin for Mind Your Now - AI-powered task and life management
 
@@ -22,10 +24,10 @@ This plugin integrates [Mind Your Now](https://mindyournow.com) (MYN) with [Open
 
 ```bash
 # Install via OpenClaw
-openclaw plugins install @mind-your-now/openclaw-plugin
+openclaw plugins install @mind-your-now/myn
 
 # Or via npm
-npm install @mind-your-now/openclaw-plugin
+npm install @mind-your-now/myn
 ```
 
 ## Configuration
@@ -403,7 +405,7 @@ npm run typecheck
 The shared API client used by all tools:
 
 ```typescript
-import { MynApiClient } from '@mind-your-now/openclaw-plugin';
+import { MynApiClient } from '@mind-your-now/myn';
 
 const client = new MynApiClient(
   'https://api.mindyournow.com',
@@ -434,6 +436,13 @@ npm run test:watch
 ## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## Releasing
+
+Bump `version` in `package.json` and `openclaw.plugin.json`, merge to `main`, then tag that `main` commit
+`v<version>` and push the tag. `.github/workflows/release.yml` runs the tests and publishes to npm through
+trusted publishing. The publish job refuses a tag that does not match both `package.json` and
+`openclaw.plugin.json`, or is not on `main`.
 
 ## License
 
